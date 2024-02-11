@@ -65,10 +65,6 @@ public class Mod : ModBase // <= Do not Remove.
         var indexBuf = File.ReadAllBytes(Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "orig_data.i"));
         _index = IndexFile.Serializer.Parse(indexBuf);
         
-        byte[] outBuf = new byte[IndexFile.Serializer.GetMaxSize(_index)];
-        IndexFile.Serializer.Write(outBuf, _index);
-        File.WriteAllBytes(Path.Combine(Path.GetDirectoryName(_modLoader.GetAppConfig().AppLocation)!, "data.i"), outBuf);
-        
         _dataPath = Path.Combine(Path.GetDirectoryName(_modLoader.GetAppConfig().AppLocation)!, "data");
         if (!Directory.Exists(_dataPath)) Directory.CreateDirectory(_dataPath);
 
@@ -110,6 +106,22 @@ public class Mod : ModBase // <= Do not Remove.
                 Console.WriteLine($"- Index: Updated {str} external file");
             RemoveArchiveFile(hash);
         }
+        
+        string[] files2 = Directory.GetFiles(_dataPath, "*", SearchOption.AllDirectories);
+        foreach (var file in files2)
+        {
+            if (file.Contains("sound")) continue;
+            string str = file[(_dataPath.Length + 1)..].Replace('\\', '/');
+
+            byte[] hashBytes = XxHash64.Hash(Encoding.ASCII.GetBytes(str), 0);
+            ulong hash = BinaryPrimitives.ReadUInt64BigEndian(hashBytes);
+            
+            int idx = _index.ExternalFileHashes.BinarySearch(hash);
+            if (idx < 0)
+            {
+                File.Delete(file);
+            }
+        }
 
         Console.WriteLine();
         Console.WriteLine($"-> {files.Length} files have been added or updated to the external file list.");
@@ -146,21 +158,6 @@ public class Mod : ModBase // <= Do not Remove.
     
     private void ModLoaded(IModV1 arg1, IModConfigV1 arg2)
     {
-        string[] files = Directory.GetFiles(_dataPath, "*", SearchOption.AllDirectories);
-        foreach (var file in files)
-        {
-            string str = file[(_dataPath.Length + 1)..].Replace('\\', '/');
-
-            byte[] hashBytes = XxHash64.Hash(Encoding.ASCII.GetBytes(str), 0);
-            ulong hash = BinaryPrimitives.ReadUInt64BigEndian(hashBytes);
-            
-            int idx = _index.ExternalFileHashes.BinarySearch(hash);
-            if (idx < 0)
-            {
-                File.Delete(file);
-            }
-        }
-
         byte[] outBuf = new byte[IndexFile.Serializer.GetMaxSize(_index)];
         IndexFile.Serializer.Write(outBuf, _index);
         File.WriteAllBytes(Path.Combine(Path.GetDirectoryName(_modLoader.GetAppConfig().AppLocation)!, "data.i"), outBuf);
