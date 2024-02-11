@@ -1,0 +1,16 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "gbfrelink.utility.manager", "gbfrelink.utility.manager\gbfrelink.utility.manager.csproj", "{A75B1810-8E6E-4655-86EB-DFDD6F9D38A4}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{A75B1810-8E6E-4655-86EB-DFDD6F9D38A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A75B1810-8E6E-4655-86EB-DFDD6F9D38A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A75B1810-8E6E-4655-86EB-DFDD6F9D38A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A75B1810-8E6E-4655-86EB-DFDD6F9D38A4}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal

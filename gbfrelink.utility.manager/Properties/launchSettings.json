@@ -1,0 +1,9 @@
+{
+  "profiles": {
+    "Profile 1": {
+      "commandName": "Executable",
+      "executablePath": "C:\\Program Files (x86)\\Steam\\steamapps\\common\\Granblue Fantasy Relink\\granblue_fantasy_relink.exe",
+      "nativeDebugging": false
+    }
+  }
+}

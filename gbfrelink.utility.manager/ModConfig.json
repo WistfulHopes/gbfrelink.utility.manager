@@ -1,0 +1,35 @@
+{
+  "ModId": "gbfrelink.utility.manager",
+  "ModName": "Granblue Fantasy Relink Mod Manager",
+  "ModAuthor": "WistfulHopes",
+  "ModVersion": "1.0.2",
+  "ModDescription": "Mod management utility for Granblue Fantasy Relink",
+  "ModDll": "gbfrelink.utility.manager.dll",
+  "ModIcon": "Preview.png",
+  "ModR2RManagedDll32": "x86/gbfrelink.utility.manager.dll",
+  "ModR2RManagedDll64": "x64/gbfrelink.utility.manager.dll",
+  "ModNativeDll32": "",
+  "ModNativeDll64": "",
+  "Tags": [],
+  "CanUnload": null,
+  "HasExports": null,
+  "IsLibrary": false,
+  "ReleaseMetadataFileName": "gbfrelink.utility.manager.ReleaseMetadata.json",
+  "PluginData": {
+    "GitHubRelease": {
+      "UserName": "WistfulHopes",
+      "RepositoryName": "gbfrelink.utility.manager",
+      "UseReleaseTag": true,
+      "AssetFileName": "Mod.zip"
+    }
+  },
+  "IsUniversalMod": false,
+  "ModDependencies": [
+    "reloaded.sharedlib.hooks"
+  ],
+  "OptionalDependencies": [],
+  "SupportedAppId": [
+    "granblue_fantasy_relink.exe"
+  ],
+  "ProjectUrl": ""
+}
