@@ -50,9 +50,9 @@ public class Mod : ModBase // <= Do not Remove.
     private readonly IModConfig _modConfig;
 
     private IndexFile _index;
-    
+
     private string _dataPath;
-    
+
     public Mod(ModContext context)
     {
         _modLoader = context.ModLoader;
@@ -62,11 +62,18 @@ public class Mod : ModBase // <= Do not Remove.
         _configuration = context.Configuration;
         _modConfig = context.ModConfig;
 
-        var indexBuf = File.ReadAllBytes(Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "orig_data.i"));
-        _index = IndexFile.Serializer.Parse(indexBuf);
-        
-        _dataPath = Path.Combine(Path.GetDirectoryName(_modLoader.GetAppConfig().AppLocation)!, "data");
+        var origIndex = File.ReadAllBytes(Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "orig_data.i"));
+        _index = IndexFile.Serializer.Parse(origIndex);
+
+        // Copy original 
+        string appLocation = _modLoader.GetAppConfig().AppLocation;
+        string dir = Path.GetDirectoryName(appLocation)!;
+
+        _dataPath = Path.Combine(dir, "data");
         if (!Directory.Exists(_dataPath)) Directory.CreateDirectory(_dataPath);
+
+        // Ensure to start with a fresh base, Otherwise if all mods are unloaded, the modded data.i still stays
+        File.WriteAllBytes(Path.Combine(dir, "data.i"), origIndex);
 
         _modLoader.ModLoading += ModLoading;
         _modLoader.ModLoaded += ModLoaded;
@@ -79,16 +86,16 @@ public class Mod : ModBase // <= Do not Remove.
             return;
 
         var allDirectories = Directory.GetDirectories(folder, "*", SearchOption.AllDirectories);
-        foreach (string dir in allDirectories) 
-        { 
-            string dirToCreate = dir.Replace(folder, _dataPath); 
-            Directory.CreateDirectory(dirToCreate); 
-        }
-        
-        var allFiles = Directory.GetFiles(folder, "*.*", SearchOption.AllDirectories);
-        foreach (string newPath in allFiles) 
+        foreach (string dir in allDirectories)
         {
-            File.Copy(newPath, newPath.Replace(folder, _dataPath), true); 
+            string dirToCreate = dir.Replace(folder, _dataPath);
+            Directory.CreateDirectory(dirToCreate);
+        }
+
+        var allFiles = Directory.GetFiles(folder, "*.*", SearchOption.AllDirectories);
+        foreach (string newPath in allFiles)
+        {
+            File.Copy(newPath, newPath.Replace(folder, _dataPath), true);
         }
 
         string[] files = Directory.GetFiles(folder, "*", SearchOption.AllDirectories);
@@ -106,7 +113,7 @@ public class Mod : ModBase // <= Do not Remove.
                 Console.WriteLine($"- Index: Updated {str} external file");
             RemoveArchiveFile(hash);
         }
-        
+
         string[] files2 = Directory.GetFiles(_dataPath, "*", SearchOption.AllDirectories);
         foreach (var file in files2)
         {
@@ -115,7 +122,7 @@ public class Mod : ModBase // <= Do not Remove.
 
             byte[] hashBytes = XxHash64.Hash(Encoding.ASCII.GetBytes(str), 0);
             ulong hash = BinaryPrimitives.ReadUInt64BigEndian(hashBytes);
-            
+
             int idx = _index.ExternalFileHashes.BinarySearch(hash);
             if (idx < 0)
             {
@@ -126,7 +133,7 @@ public class Mod : ModBase // <= Do not Remove.
         Console.WriteLine();
         Console.WriteLine($"-> {files.Length} files have been added or updated to the external file list.");
     }
-    
+
     private bool AddOrUpdateExternalFile(ulong hash, ulong fileSize)
     {
         bool added = false;
@@ -155,7 +162,7 @@ public class Mod : ModBase // <= Do not Remove.
             _index.FileToChunkIndexers.RemoveAt(idx);
         }
     }
-    
+
     private void ModLoaded(IModV1 arg1, IModConfigV1 arg2)
     {
         byte[] outBuf = new byte[IndexFile.Serializer.GetMaxSize(_index)];
