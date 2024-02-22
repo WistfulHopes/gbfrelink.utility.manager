@@ -62,15 +62,18 @@ public class Mod : ModBase // <= Do not Remove.
         _configuration = context.Configuration;
         _modConfig = context.ModConfig;
 
-        var origIndex = File.ReadAllBytes(Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "orig_data.i"));
-        _index = IndexFile.Serializer.Parse(origIndex);
-
         // Copy original 
         string appLocation = _modLoader.GetAppConfig().AppLocation;
         string dir = Path.GetDirectoryName(appLocation)!;
 
         _dataPath = Path.Combine(dir, "data");
         if (!Directory.Exists(_dataPath)) Directory.CreateDirectory(_dataPath);
+
+        if (!File.Exists(Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "orig_data.i")))
+            File.Copy(Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "data.i"), Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "orig_data.i"));
+        
+        var origIndex = File.ReadAllBytes(Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "orig_data.i"));
+        _index = IndexFile.Serializer.Parse(origIndex);
 
         // Ensure to start with a fresh base, Otherwise if all mods are unloaded, the modded data.i still stays
         File.WriteAllBytes(Path.Combine(dir, "data.i"), origIndex);
