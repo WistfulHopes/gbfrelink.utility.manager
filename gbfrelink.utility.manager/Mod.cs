@@ -151,7 +151,7 @@ public class Mod : ModBase // <= Do not Remove.
         if (!File.Exists(modLoaderDataIndexPath))
         {
             // Two heuristics to check if this is an original index file:
-            // - 1. check codename. the mod loader will create an index with "relink-mod"
+            // - 1. check codename. the mod loader will create an index with "relink-reloaded-ii-mod"
             // - 2. check table offset in flatbuffers file. flatsharp serializes the vtable slightly differently with a negative offset, enough to spot a difference
             //      this one is useful if the index has been tampered by GBFRDataTools from non-reloaded mods
 
