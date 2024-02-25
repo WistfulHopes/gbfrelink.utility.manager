@@ -2,7 +2,7 @@
   "ModId": "gbfrelink.utility.manager",
   "ModName": "Granblue Fantasy Relink Mod Manager",
   "ModAuthor": "WistfulHopes",
-  "ModVersion": "1.0.2",
+  "ModVersion": "1.0.3",
   "ModDescription": "Mod management utility for Granblue Fantasy Relink",
   "ModDll": "gbfrelink.utility.manager.dll",
   "ModIcon": "Preview.png",
