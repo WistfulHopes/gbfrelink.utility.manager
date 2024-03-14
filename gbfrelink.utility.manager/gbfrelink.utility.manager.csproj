@@ -17,20 +17,20 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ReloadedLinkRoots Include="gbfrelink.utility.manager"/>
+        <ReloadedLinkRoots Include="gbfrelink.utility.manager" />
         <!-- Add assemblies to be trimmed. You might need to add their dependencies too!  -->
         <!-- <ReloadedLinkAssemblies Include="Reloaded.Memory" /> -->
     </ItemGroup>
 
-    <Import Project="Reloaded.Trimming.targets"/>
-    <Import Project="Reloaded.Checks.targets"/>
+    <Import Project="Reloaded.Trimming.targets" />
+    <Import Project="Reloaded.Checks.targets" />
 
     <ItemGroup>
-        <None Remove="ModConfig.json"/>
-        <None Remove="Publish.ps1"/>
-        <None Remove="BuildLinked.ps1"/>
-        <None Remove="Reloaded.Trimming.targets"/>
-        <None Remove="Reloaded.Checks.targets"/>
+        <None Remove="ModConfig.json" />
+        <None Remove="Publish.ps1" />
+        <None Remove="BuildLinked.ps1" />
+        <None Remove="Reloaded.Trimming.targets" />
+        <None Remove="Reloaded.Checks.targets" />
     </ItemGroup>
 
     <ItemGroup>
@@ -43,18 +43,19 @@
     </ItemGroup>
 
     <ItemGroup>
-        <PackageReference Include="FlatSharp.Compiler" Version="7.4.0">
+        <PackageReference Include="FlatSharp.Compiler" Version="7.5.1">
           <PrivateAssets>all</PrivateAssets>
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
-        <PackageReference Include="FlatSharp.Runtime" Version="7.4.0" />
-        <PackageReference Include="Reloaded.Mod.Interfaces" Version="2.4.0" ExcludeAssets="runtime"/>
-        <PackageReference Include="Reloaded.SharedLib.Hooks" Version="1.9.0"/>
+        <PackageReference Include="FlatSharp.Runtime" Version="7.5.1" />
+        <PackageReference Include="Reloaded.Mod.Interfaces" Version="2.4.0" ExcludeAssets="runtime" />
+        <PackageReference Include="Reloaded.SharedLib.Hooks" Version="1.9.0" />
         <PackageReference Include="System.IO.Hashing" Version="8.0.0" />
     </ItemGroup>
 
 	<ItemGroup>
 		<FlatSharpSchema Include="Entities/IndexFile.fbs" />
+		<FlatSharpSchema Include="Entities/MInfo_ModelInfo.fbs" />
 	</ItemGroup>
 
 </Project>
