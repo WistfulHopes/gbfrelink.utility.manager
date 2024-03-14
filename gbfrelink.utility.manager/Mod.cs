@@ -306,6 +306,10 @@ public class Mod : ModBase // <= Do not Remove.
 
                 LogInfo($"-> .minfo file '{file}' magic has been updated to be compatible");
             }
+            else
+            {
+                File.Copy(file, output, overwrite: true);
+            }
         }
         catch (Exception e)
         {
