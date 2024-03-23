@@ -333,7 +333,7 @@ public class Mod : ModBase // <= Do not Remove.
         }
         catch (Exception e)
         {
-            LogError($"Failed to process .json file into MessagePack .msg, file will be copied instead- {e.Message}");
+            LogError($"Failed to process .json file into MessagePack .msg, file will be copied instead - {e.Message}");
             File.Copy(file, output, overwrite: true);
         }
     }
