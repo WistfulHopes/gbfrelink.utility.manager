@@ -6,6 +6,7 @@ using Reloaded.Hooks.ReloadedII.Interfaces;
 using Reloaded.Mod.Interfaces;
 using Reloaded.Mod.Interfaces.Internal;
 
+using MessagePack;
 using FlatSharp;
 
 using GBFRDataTools;
@@ -278,6 +279,10 @@ public class Mod : ModBase // <= Do not Remove.
                 UpgradeMInfoIfNeeded(file, output);
                 break;
 
+            case ".json":
+                ConvertToMsg(file, output);
+                break;
+
             default:
                 File.Copy(file, output, overwrite: true);
                 break;
@@ -313,7 +318,22 @@ public class Mod : ModBase // <= Do not Remove.
         }
         catch (Exception e)
         {
-            LogError($"Failed to process .minfo file, will be copied instead - {e.Message}");
+            LogError($"Failed to process .minfo file, file will be copied instead - {e.Message}");
+            File.Copy(file, output, overwrite: true);
+        }
+    }
+
+    private void ConvertToMsg(string file, string output)
+    {
+        LogInfo($"-> Converting .json '{file}' to MessagePack .msg..");
+        try
+        {
+            var json = File.ReadAllText(file);
+            File.WriteAllBytes(Path.ChangeExtension(output, ".msg"), MessagePackSerializer.ConvertFromJson(json));
+        }
+        catch (Exception e)
+        {
+            LogError($"Failed to process .json file into MessagePack .msg, file will be copied instead- {e.Message}");
             File.Copy(file, output, overwrite: true);
         }
     }

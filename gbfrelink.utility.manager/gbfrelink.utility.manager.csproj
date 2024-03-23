@@ -48,6 +48,7 @@
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="FlatSharp.Runtime" Version="7.5.1" />
+        <PackageReference Include="MessagePack" Version="2.5.140" />
         <PackageReference Include="Reloaded.Mod.Interfaces" Version="2.4.0" ExcludeAssets="runtime" />
         <PackageReference Include="Reloaded.SharedLib.Hooks" Version="1.9.0" />
         <PackageReference Include="System.IO.Hashing" Version="8.0.0" />
