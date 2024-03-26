@@ -253,12 +253,17 @@ public class Mod : ModBase // <= Do not Remove.
         string[] files = Directory.GetFiles(folder, "*", SearchOption.AllDirectories);
         foreach (var file in files)
         {
-            string str = file[(folder.Length + 1)..].Replace('\\', '/').ToLower();
-
+            string str = file[(folder.Length + 1)..].Replace('\\', '/').ToLower()
+                .Replace(".json", ".msg");
+            
             byte[] hashBytes = XxHash64.Hash(Encoding.ASCII.GetBytes(str), 0);
             ulong hash = BinaryPrimitives.ReadUInt64BigEndian(hashBytes);
 
-            long fileSize = new FileInfo(file).Length;
+            string outputFile = file;
+            if (Path.GetExtension(file) == ".json")
+                outputFile = Path.Combine(_dataPath, str);
+
+            long fileSize = new FileInfo(outputFile).Length;
             if (AddOrUpdateExternalFile(hash, (ulong)fileSize))
                 LogInfo($"- {modConfig.ModId}: Added {str} as new external file");
             else
