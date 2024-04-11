@@ -6,8 +6,10 @@
 using Reloaded.Hooks.ReloadedII.Interfaces;
 using Reloaded.Mod.Interfaces;
 using Reloaded.Mod.Interfaces.Internal;
+
 using gbfrelink.utility.manager.Template.Configuration;
 using gbfrelink.utility.manager.Configuration;
+using gbfrelink.utility.manager.Interfaces;
 
 namespace gbfrelink.utility.manager.Template;
 
@@ -73,6 +75,8 @@ public class Startup : IMod
             Owner = this,
             Configuration = _configuration,
         });
+
+        _modLoader.AddOrReplaceController<IDataManager>(this, new DataManager(_modConfig, _modLoader, _logger));
     }
 
     private void OnConfigurationUpdated(IConfigurable obj)

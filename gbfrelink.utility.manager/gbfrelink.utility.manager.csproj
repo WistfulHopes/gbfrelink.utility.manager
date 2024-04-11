@@ -48,6 +48,7 @@
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
         <PackageReference Include="FlatSharp.Runtime" Version="7.5.1" />
+        <PackageReference Include="K4os.Compression.LZ4" Version="1.3.8" />
         <PackageReference Include="MessagePack" Version="2.5.140" />
         <PackageReference Include="Reloaded.Mod.Interfaces" Version="2.4.0" ExcludeAssets="runtime" />
         <PackageReference Include="Reloaded.SharedLib.Hooks" Version="1.9.0" />
@@ -57,6 +58,10 @@
 	<ItemGroup>
 		<FlatSharpSchema Include="Entities/IndexFile.fbs" />
 		<FlatSharpSchema Include="Entities/MInfo_ModelInfo.fbs" />
+	</ItemGroup>
+
+	<ItemGroup>
+	  <ProjectReference Include="..\gbfrelink.utility.manager.Interfaces\gbfrelink.utility.manager.Interfaces.csproj" />
 	</ItemGroup>
 
 </Project>
