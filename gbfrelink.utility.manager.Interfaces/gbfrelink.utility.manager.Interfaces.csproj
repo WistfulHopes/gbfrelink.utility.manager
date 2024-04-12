@@ -5,6 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Title>Data managing interface for gbfrelink.utility.manager</Title>
+	<VersionPrefix>1.0.1</VersionPrefix>
+    <FileVersion>1.0.1</FileVersion>
   </PropertyGroup>
 
 </Project>
