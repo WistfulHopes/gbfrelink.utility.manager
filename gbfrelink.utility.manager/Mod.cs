@@ -15,13 +15,14 @@ using GBFRDataTools.Entities;
 
 using gbfrelink.utility.manager.Template;
 using gbfrelink.utility.manager.Configuration;
+using gbfrelink.utility.manager.Interfaces;
 
 namespace gbfrelink.utility.manager;
 
 /// <summary>
 /// Your mod logic goes here.
 /// </summary>
-public class Mod : ModBase // <= Do not Remove.
+public class Mod : ModBase, IExports // <= Do not Remove.
 {
     /// <summary>
     /// Provides access to the mod loader API.
@@ -75,6 +76,8 @@ public class Mod : ModBase // <= Do not Remove.
         if (!_dataManager.Initialize())
             _logger.WriteLine("[GBFRelinkManager] Failed to initialize. Mods will still be attempted to be loaded.", _logger.ColorRed);
 
+        _modLoader.AddOrReplaceController<IDataManager>(_owner, _dataManager);
+
         _modLoader.ModLoading += ModLoading;
         _modLoader.ModLoaded += ModLoaded;
 
@@ -83,13 +86,19 @@ public class Mod : ModBase // <= Do not Remove.
 
     private void ModLoading(IModV1 mod, IModConfigV1 modConfig)
     {
-        _dataManager.RegisterModFiles(modConfig);
+        var modDir = Path.Combine(_modLoader.GetDirectoryForModId(modConfig.ModId), @"GBFR\data");
+        if (!Directory.Exists(modDir))
+            return;
+
+        _dataManager.RegisterModFiles(modConfig.ModId, modDir);
     }
 
     private void ModLoaded(IModV1 arg1, IModConfigV1 arg2)
     {
-        _dataManager.SaveIndex();
+        _dataManager.UpdateIndex();
     }
+
+    public Type[] GetTypes() => new[] { typeof(IDataManager) };
 
     #region Standard Overrides
 
@@ -100,6 +109,7 @@ public class Mod : ModBase // <= Do not Remove.
         _configuration = configuration;
         _logger.WriteLine($"[{_modConfig.ModId}] Config Updated: Applying");
     }
+
 
     #endregion
 

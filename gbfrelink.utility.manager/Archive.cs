@@ -10,7 +10,6 @@ using GBFRDataTools.Entities;
 
 using FlatSharp;
 using K4os.Compression.LZ4;
-using System.Reflection;
 
 namespace gbfrelink.utility.manager;
 

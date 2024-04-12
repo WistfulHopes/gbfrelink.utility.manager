@@ -75,8 +75,6 @@ public class Startup : IMod
             Owner = this,
             Configuration = _configuration,
         });
-
-        _modLoader.AddOrReplaceController<IDataManager>(this, new DataManager(_modConfig, _modLoader, _logger));
     }
 
     private void OnConfigurationUpdated(IConfigurable obj)

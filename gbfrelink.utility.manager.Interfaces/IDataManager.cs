@@ -1,19 +1,28 @@
-﻿using Reloaded.Mod.Interfaces.Internal;
-
-namespace gbfrelink.utility.manager.Interfaces;
+﻿namespace gbfrelink.utility.manager.Interfaces;
 
 public interface IDataManager
 {
     /// <summary>
-    /// Registers & updates the index with all the potential GBFR files for a mod.
+    /// Returns whether the data manager is initialized.
     /// </summary>
-    /// <param name="modConfig"></param>
-    void RegisterModFiles(IModConfigV1 modConfig);
+    bool Initialized { get; }
 
     /// <summary>
-    /// Serializes & saves the index file.
+    /// Registers & updates the index with all the potential GBFR files for a mod.
     /// </summary>
-    void SaveIndex();
+    /// <param name="modId">Mod Id (used for logging).</param>
+    /// <param name="folder">Folder containing modded files.</param>
+    void RegisterModFiles(string modId, string folder);
+
+    /// <summary>
+    /// Gets the directory where data files (data.i, etc) are contained.
+    /// </summary>
+    string GetDataPath();
+
+    /// <summary>
+    /// Serializes & saves the index file to the data directory. This should be called after adding external files.
+    /// </summary>
+    void UpdateIndex();
 
     /// <summary>
     /// Returns whether a file exists in the game data.
@@ -22,7 +31,7 @@ public interface IDataManager
     bool FileExists(string filePath, bool includeExternal = true, bool checkExternalFileExistsOnDisk = true);
 
     /// <summary>
-    /// Gets a game archive file. This does not fetch external files.
+    /// Gets a game archive file. This does not fetch from external files.
     /// </summary>
     /// <param name="fileName"></param>
     /// <returns></returns>

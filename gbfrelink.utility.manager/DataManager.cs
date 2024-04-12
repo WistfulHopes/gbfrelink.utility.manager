@@ -30,6 +30,9 @@ public class DataManager : IDataManager
 
     public ArchiveAccessor _archiveAccessor;
 
+    private bool _initialized;
+    public bool Initialized => _initialized;
+
     public const string INDEX_ORIGINAL_CODENAME = "relink";
     public const string INDEX_MODDED_CODENAME = "relink-reloaded-ii-mod";
 
@@ -43,6 +46,9 @@ public class DataManager : IDataManager
     #region Public API
     public bool Initialize()
     {
+        if (_initialized)
+            throw new InvalidOperationException("Data Manager is already initialized.");
+
         string appLocation = _modLoader.GetAppConfig().AppLocation;
         _gameDir = Path.GetDirectoryName(appLocation)!;
 
@@ -59,20 +65,18 @@ public class DataManager : IDataManager
         if (!OverwriteGameDataIndexForCleanState())
             return false;
 
+        _initialized = true;
         return true;
     }
 
     /// <summary>
     /// Registers & updates the index with all the potential GBFR files for a mod.
     /// </summary>
-    /// <param name="modConfig"></param>
-    public void RegisterModFiles(IModConfigV1 modConfig)
+    /// <param name="modId">Mod Id (used for logging).</param>
+    /// <param name="folder">Folder containing modded files.</param>
+    public void RegisterModFiles(string modId, string folder)
     {
-        ArgumentNullException.ThrowIfNull(modConfig, nameof(modConfig));
-
-        var folder = Path.Combine(_modLoader.GetDirectoryForModId(modConfig.ModId), @"GBFR\data");
-        if (!Directory.Exists(folder))
-            return;
+        CheckInitialized();
 
         var allDirectories = Directory.GetDirectories(folder, "*", SearchOption.AllDirectories);
         foreach (string dir in allDirectories)
@@ -84,29 +88,27 @@ public class DataManager : IDataManager
         var allFiles = Directory.GetFiles(folder, "*.*", SearchOption.AllDirectories);
         foreach (string newPath in allFiles)
         {
-            ProcessFile(newPath, newPath.Replace(folder, _dataPath));
+            CookFileToOutput(newPath, newPath.Replace(folder, _dataPath));
         }
 
         string[] files = Directory.GetFiles(folder, "*", SearchOption.AllDirectories);
         foreach (var file in files)
         {
-            string str = file[(folder.Length + 1)..].Replace(".json", ".msg");
-            ulong hash = Utils.XXHash64Path(str);
+            string gamePath = file[(folder.Length + 1)..].Replace(".json", ".msg");
 
             string outputFile = file;
             if (Path.GetExtension(file) == ".json")
-                outputFile = Path.Combine(_dataPath, str);
+                outputFile = Path.Combine(_dataPath, gamePath);
 
             long fileSize = new FileInfo(outputFile).Length;
-            if (AddOrUpdateExternalFile(hash, (ulong)fileSize))
-                LogInfo($"- {modConfig.ModId}: Added {str} as new external file");
+            if (RegisterExternalFileToIndex(gamePath, (ulong)fileSize))
+                LogInfo($"- {modId}: Added {gamePath} as new external file");
             else
-                LogInfo($"- {modConfig.ModId}: Updated {str} external file");
-            RemoveArchiveFileFromIndex(hash);
+                LogInfo($"- {modId}: Updated {gamePath} external file");
         }
 
         LogInfo("");
-        LogInfo($"-> {files.Length} files have been added or updated to the external file list.");
+        LogInfo($"-> {files.Length} files have been added or updated to the external file list ({modId}).");
     }
 
     /// <summary>
@@ -114,15 +116,21 @@ public class DataManager : IDataManager
     /// </summary>
     /// <param name="gamePath"></param>
     /// <param name="data"></param>
-    public void AddOrUpdateExternalFile(string fileName, byte[] fileData)
+    public void AddOrUpdateExternalFile(string gamePath, byte[] fileData)
     {
-        LogInfo($"-> Adding/Updating file '{fileName}' ({fileData.Length} bytes)");
+        CheckInitialized();
 
-        string tempFile = Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), @"temp", fileName);
+        LogInfo($"-> Adding/Updating file '{gamePath}' ({fileData.Length} bytes)");
+
+        string tempFile = Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), @"temp", gamePath);
         Directory.CreateDirectory(Path.GetDirectoryName(tempFile));
         File.WriteAllBytes(tempFile, fileData);
 
-        ProcessFile(tempFile, Path.Combine(_dataPath, fileName));
+        string outputPath = Path.Combine(_dataPath, gamePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
+
+        RegisterExternalFileToIndex(gamePath, (ulong)fileData.Length);
+        CookFileToOutput(tempFile, Path.Combine(_dataPath, gamePath));
 
         File.Delete(tempFile);
     }
@@ -135,15 +143,22 @@ public class DataManager : IDataManager
     /// <param name="data"></param>
     public void AddOrUpdateExternalFile(string filePath, string gamePath)
     {
+        CheckInitialized();
+
         LogInfo($"-> Adding/Updating file '{filePath}' from '{filePath}'");
-        ProcessFile(filePath, Path.Combine(_dataPath, gamePath));
+
+        long fileSize = new FileInfo(filePath).Length;
+        RegisterExternalFileToIndex(gamePath, (ulong)fileSize);
+        CookFileToOutput(filePath, Path.Combine(_dataPath, gamePath));
     }
 
     /// <summary>
     /// Saves & overwrites the index file.
     /// </summary>
-    public void SaveIndex()
+    public void UpdateIndex()
     {
+        CheckInitialized();
+
         byte[] outBuf = new byte[IndexFile.Serializer.GetMaxSize(_moddedIndex)];
         _moddedIndex.Codename = INDEX_MODDED_CODENAME; // Helps us keep of track whether this is an original index or not
 
@@ -162,6 +177,8 @@ public class DataManager : IDataManager
     /// <returns>Whether the file exists in the game data.</returns>
     public bool FileExists(string filePath, bool includeExternal = true, bool checkExternalFileExistsOnDisk = true)
     {
+        CheckInitialized();
+
         if (string.IsNullOrEmpty(filePath))
             return false;
 
@@ -188,8 +205,17 @@ public class DataManager : IDataManager
 
     public byte[] GetArchiveFile(string fileName)
     {
+        CheckInitialized();
+
         _archiveAccessor ??= new ArchiveAccessor(_gameDir, _originalIndex);
         return _archiveAccessor.GetFileData(fileName);
+    }
+
+    public string GetDataPath()
+    {
+        CheckInitialized();
+
+        return _dataPath;
     }
 
     #endregion
@@ -334,7 +360,12 @@ public class DataManager : IDataManager
         return true;
     }
 
-    private void ProcessFile(string file, string output)
+    /// <summary>
+    /// Process a file to game output.
+    /// </summary>
+    /// <param name="file"></param>
+    /// <param name="output"></param>
+    private void CookFileToOutput(string file, string output)
     {
         string ext = Path.GetExtension(file);
         switch (ext)
@@ -402,8 +433,16 @@ public class DataManager : IDataManager
         }
     }
 
-    private bool AddOrUpdateExternalFile(ulong hash, ulong fileSize)
+    /// <summary>
+    /// Adds a game file to the external files of the index, and removes it from the archive list if present.
+    /// </summary>
+    /// <param name="gamePath"></param>
+    /// <param name="fileSize"></param>
+    /// <returns></returns>
+    private bool RegisterExternalFileToIndex(string gamePath, ulong fileSize)
     {
+        ulong hash = Utils.XXHash64Path(gamePath);
+
         bool added = false;
         int idx = _moddedIndex.ExternalFileHashes.BinarySearch(hash);
         if (idx < 0)
@@ -417,6 +456,8 @@ public class DataManager : IDataManager
         {
             _moddedIndex.ExternalFileSizes[idx] = fileSize;
         }
+
+        RemoveArchiveFileFromIndex(hash);
         return added;
     }
 
@@ -428,6 +469,12 @@ public class DataManager : IDataManager
             _moddedIndex.ArchiveFileHashes.RemoveAt(idx);
             _moddedIndex.FileToChunkIndexers.RemoveAt(idx);
         }
+    }
+
+    private void CheckInitialized()
+    {
+        if (!_initialized)
+            throw new InvalidOperationException("Data Manager is not initialized.");
     }
 
     private void LogInfo(string str)
