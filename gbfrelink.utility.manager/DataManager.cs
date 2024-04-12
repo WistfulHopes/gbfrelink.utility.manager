@@ -277,25 +277,49 @@ public class DataManager : IDataManager
         }
 
         // Grab data.i from the game's folder. It'll be treated as the original we're storing locally
+        bool copyGameDataIndex = true;
         if (!File.Exists(modLoaderDataIndexPath))
         {
+            // We could not find data.i in manager folder (first time run, or can happen if the user deleted the manager folder),
+            // therefore check the game directory's and whether it's original
+
             // Two heuristics to check if this is an original index file:
-            // - 1. check codename. the mod loader will create an index with "relink-reloaded-ii-mod"
+            // - 1. check codename. the mod manager will create an index with "relink-reloaded-ii-mod"
             // - 2. check table offset in flatbuffers file. flatsharp serializes the vtable slightly differently with a negative offset, enough to spot a difference
             //      this one is useful if the index has been tampered by GBFRDataTools from non-reloaded mods
 
+            bool checkOrig = false;
             if (gameIndex.Codename != INDEX_ORIGINAL_CODENAME)
             {
-                LogError("ERROR: Game's 'data.i' appears to already be modded even though Reloaded II's data file is missing.");
-                LogError("Please verify game files integrity first.");
-                return false;
+                LogError("ERROR: Game's 'data.i' appears to already be modded even though GBFR Mod Manager's local original data file is missing.");
+                checkOrig = true;
             }
             else if (BinaryPrimitives.ReadInt32LittleEndian(gameIndexFile.AsSpan(4)) != 0)
             {
-                LogError("ERROR: Game's 'data.i' appears to already have been tampered with from outside the mod loader");
-                LogError("This can happen if you've installed mods that does not use the Reloaded II GBFR Mod Loader.");
-                LogError("This is unsupported and Reloaded II mods should be used instead. Verify integrity before using the mod loader.");
-                return false;
+                LogError("ERROR: Game's 'data.i' appears to already have been tampered with from outside the mod manager");
+                LogError("This can happen if you've installed mods that does not use the GBFR Mod Manager.");
+                LogError("This is unsupported and GBFR Mod Manager mods should be used instead.");
+                checkOrig = true;
+            }
+
+            if (checkOrig)
+            {
+                // If we're here, the game has a data.i but it's already been modded.
+                // Check if orig_data.i was created previously by the manager, and use it instead
+
+                string gameOrigDataIndexPath = Path.Combine(_gameDir, "orig_data.i");
+                if (File.Exists(gameOrigDataIndexPath))
+                {
+                    LogInfo("Found orig_data.i in game folder, using it instead");
+                    File.Copy(gameOrigDataIndexPath, modLoaderDataIndexPath, overwrite: true);
+
+                    copyGameDataIndex = false;
+                }
+                else
+                {
+                    LogError("Could not find an original data.i to use. Verify integrity before using the mod manager.");
+                    return false;
+                }
             }
         }
         else
@@ -306,21 +330,23 @@ public class DataManager : IDataManager
             LogInfo("Game's data.i is original & different from local copy. Updating it.");
         }
 
-        try
+        if (copyGameDataIndex)
         {
-            File.Copy(gameDataIndexPath, modLoaderDataIndexPath, overwrite: true);
+            try
+            {
+                File.Copy(gameDataIndexPath, modLoaderDataIndexPath, overwrite: true);
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                LogError($"ERROR: Could not copy game's data.i to mod manager's folder ({_modConfig.ModId}), missing permissions?");
+                return false;
+            }
+            catch (Exception ex)
+            {
+                LogError($"ERROR: Could not copy game's data.i to mod manager's folder ({_modConfig.ModId}) - {ex.Message}");
+                return false;
+            }
         }
-        catch (UnauthorizedAccessException ex)
-        {
-            LogError("ERROR: Could not copy game's data.i to mod loader's folder, missing permissions?");
-            return false;
-        }
-        catch (Exception ex)
-        {
-            LogError($"ERROR: Could not copy game's data.i to mod loader's folder - {ex.Message}");
-            return false;
-        }
-
 
         return true;
     }
@@ -331,11 +357,8 @@ public class DataManager : IDataManager
     /// <returns></returns>
     private bool OverwriteGameDataIndexForCleanState()
     {
-        string appLocation = _modLoader.GetAppConfig().AppLocation;
-        string gameDir = Path.GetDirectoryName(appLocation)!;
-
         string modDir = Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId));
-        string gameDataIndexPath = Path.Combine(gameDir, "data.i");
+        string gameDataIndexPath = Path.Combine(_gameDir, "data.i");
         string modLoaderDataIndexPath = Path.Combine(modDir, "orig_data.i");
 
         var origIndex = File.ReadAllBytes(modLoaderDataIndexPath);
@@ -346,7 +369,7 @@ public class DataManager : IDataManager
         File.WriteAllBytes(gameDataIndexPath, origIndex);
 
         // Also make a backup of the original data.i in the game's directory
-        string gameDirOriginalIndexPath = Path.Combine(gameDir, "orig_data.i");
+        string gameDirOriginalIndexPath = Path.Combine(_gameDir, "orig_data.i");
         try
         {
             LogInfo($"Copying original data.i to '{gameDirOriginalIndexPath}' for backup purposes");
