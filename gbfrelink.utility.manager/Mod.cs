@@ -98,7 +98,7 @@ public class Mod : ModBase, IExports // <= Do not Remove.
         _dataManager.UpdateIndex();
     }
 
-    public Type[] GetTypes() => new[] { typeof(IDataManager) };
+    public Type[] GetTypes() => [typeof(IDataManager)];
 
     #region Standard Overrides
 
