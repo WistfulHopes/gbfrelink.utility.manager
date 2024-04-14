@@ -72,7 +72,7 @@ public class Mod : ModBase, IExports // <= Do not Remove.
         Debugger.Launch();
 #endif
 
-        _dataManager = new DataManager(_modConfig, _modLoader, _logger);
+        _dataManager = new DataManager(_modConfig, _modLoader, _logger, _configuration);
         if (!_dataManager.Initialize())
             _logger.WriteLine("[GBFRelinkManager] Failed to initialize. Mods will still be attempted to be loaded.", _logger.ColorRed);
 

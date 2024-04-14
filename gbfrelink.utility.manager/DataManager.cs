@@ -13,6 +13,8 @@ using System.Text;
 using System.Threading.Tasks;
 
 using gbfrelink.utility.manager.Interfaces;
+using gbfrelink.utility.manager.Configuration;
+
 using FlatSharp;
 
 namespace gbfrelink.utility.manager;
@@ -22,6 +24,7 @@ public class DataManager : IDataManager
     private IModConfig _modConfig;
     private IModLoader _modLoader;
     private ILogger _logger;
+    private Config _configuration;
 
     private string _gameDir;
     private IndexFile _originalIndex;
@@ -36,11 +39,12 @@ public class DataManager : IDataManager
     public const string INDEX_ORIGINAL_CODENAME = "relink";
     public const string INDEX_MODDED_CODENAME = "relink-reloaded-ii-mod";
 
-    public DataManager(IModConfig modConfig, IModLoader modLoader, ILogger logger)
+    public DataManager(IModConfig modConfig, IModLoader modLoader, ILogger logger, Config configuration)
     {
         _modConfig = modConfig;
         _modLoader = modLoader;
         _logger = logger;
+        _configuration = configuration;
     }
 
     #region Public API
@@ -393,14 +397,21 @@ public class DataManager : IDataManager
         string ext = Path.GetExtension(file);
         switch (ext)
         {
-            case ".minfo":
+            case ".minfo" when _configuration.AutoUpgradeMInfo:
                 UpgradeMInfoIfNeeded(file, output);
                 break;
 
-            case ".json":
+            case ".json" when _configuration.AutoConvertJsonToMsg:
                 ConvertToMsg(file, output);
                 break;
 
+            case ".msg":
+                if (_configuration.AutoConvertJsonToMsg && File.Exists(Path.ChangeExtension(file, ".json")))
+                    LogWarn($"'{file}' will be ignored - .json file exists & already processed");
+                else
+                    File.Copy(file, output, overwrite: true);
+
+                break;
             default:
                 File.Copy(file, output, overwrite: true);
                 break;

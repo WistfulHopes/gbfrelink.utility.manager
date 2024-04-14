@@ -25,6 +25,21 @@ public class Config : Configurable<Config>
 
         The `DefaultValue` attribute is used as part of the `Reset` button in Reloaded-Launcher.
     */
+
+    [Category("Output Options")]
+    [DisplayName("Auto-Upgrade .minfo files")]
+    [Description("Advanced users only. Whether to auto-upgrade .minfo files to remain compatible with the game.\n\n"
+        +"This option should always be enabled.")]
+    [DefaultValue(true)]
+    public bool AutoUpgradeMInfo { get; set; } = true;
+
+    [Category("Output Options")]
+    [DisplayName("Auto-Convert .json to .msg")]
+    [Description("Advanced users only. Whether to automatically convert any .json files to .msg (MessagePack) files.\n" +
+        "Please only provide .json files if this option is enabled.\n\n" +
+        "This option should always be enabled.")]
+    [DefaultValue(true)]
+    public bool AutoConvertJsonToMsg { get; set; } = true;
 }
 
 /// <summary>
