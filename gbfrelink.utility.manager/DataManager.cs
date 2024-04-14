@@ -73,6 +73,9 @@ public class DataManager : IDataManager
         return true;
     }
 
+    private record ModFile(string SourcePath, string TargetPath);
+    private List<ModFile> _modFiles = new List<ModFile>();
+
     /// <summary>
     /// Registers & updates the index with all the potential GBFR files for a mod.
     /// </summary>
@@ -92,19 +95,16 @@ public class DataManager : IDataManager
         var allFiles = Directory.GetFiles(folder, "*.*", SearchOption.AllDirectories);
         foreach (string newPath in allFiles)
         {
-            CookFileToOutput(newPath, newPath.Replace(folder, _dataPath));
+            ModFile modFile = CookFileToOutput(newPath, newPath.Replace(folder, _dataPath));
+            if (modFile is not null)
+                _modFiles.Add(modFile);
         }
 
-        string[] files = Directory.GetFiles(folder, "*", SearchOption.AllDirectories);
-        foreach (var file in files)
+        foreach (ModFile modFile in _modFiles)
         {
-            string gamePath = file[(folder.Length + 1)..].Replace(".json", ".msg");
+            string gamePath = modFile.SourcePath[(folder.Length + 1)..];
 
-            string outputFile = file;
-            if (Path.GetExtension(file) == ".json")
-                outputFile = Path.Combine(_dataPath, gamePath);
-
-            long fileSize = new FileInfo(outputFile).Length;
+            long fileSize = new FileInfo(modFile.TargetPath).Length;
             if (RegisterExternalFileToIndex(gamePath, (ulong)fileSize))
                 LogInfo($"- {modId}: Added {gamePath} as new external file");
             else
@@ -112,7 +112,9 @@ public class DataManager : IDataManager
         }
 
         LogInfo("");
-        LogInfo($"-> {files.Length} files have been added or updated to the external file list ({modId}).");
+        LogInfo($"-> {_modFiles.Count} files have been added or updated to the external file list ({modId}).");
+
+        _modFiles.Clear();
     }
 
     /// <summary>
@@ -392,33 +394,36 @@ public class DataManager : IDataManager
     /// </summary>
     /// <param name="file"></param>
     /// <param name="output"></param>
-    private void CookFileToOutput(string file, string output)
+    private ModFile CookFileToOutput(string file, string output)
     {
         string ext = Path.GetExtension(file);
         switch (ext)
         {
             case ".minfo" when _configuration.AutoUpgradeMInfo:
-                UpgradeMInfoIfNeeded(file, output);
-                break;
+                return UpgradeMInfoIfNeeded(file, output);
 
             case ".json" when _configuration.AutoConvertJsonToMsg:
-                ConvertToMsg(file, output);
-                break;
+                return ConvertToMsg(file, output);
 
             case ".msg":
                 if (_configuration.AutoConvertJsonToMsg && File.Exists(Path.ChangeExtension(file, ".json")))
+                {
                     LogWarn($"'{file}' will be ignored - .json file exists & already processed");
+                    return null!;
+                }
                 else
+                {
                     SafeCopyFile(file, output, overwrite: true);
+                    return new ModFile(file, output);
+                }
 
-                break;
             default:
                 SafeCopyFile(file, output, overwrite: true);
-                break;
+                return new ModFile(file, output);
         }
     }
 
-    private void UpgradeMInfoIfNeeded(string file, string output)
+    private ModFile UpgradeMInfoIfNeeded(string file, string output)
     {
         // GBFR v1.1.1 upgraded the minfo file - magic/build date changed, two new fields added.
         // Rendered models invisible due to magic check fail.
@@ -450,20 +455,25 @@ public class DataManager : IDataManager
             LogError($"Failed to process .minfo file, file will be copied instead - {e.Message}");
             SafeCopyFile(file, output, overwrite: true);
         }
+
+        return new ModFile(file, output);
     }
 
-    private void ConvertToMsg(string file, string output)
+    private ModFile ConvertToMsg(string file, string output)
     {
         LogInfo($"-> Converting .json '{file}' to MessagePack .msg..");
         try
         {
+            string outputMsgPath = Path.ChangeExtension(output, ".msg");
             var json = File.ReadAllText(file);
-            File.WriteAllBytes(Path.ChangeExtension(output, ".msg"), MessagePackSerializer.ConvertFromJson(json));
+            File.WriteAllBytes(outputMsgPath, MessagePackSerializer.ConvertFromJson(json));
+            return new ModFile(Path.ChangeExtension(file, ".msg"), outputMsgPath);
         }
         catch (Exception e)
         {
-            LogError($"Failed to process .json file into MessagePack .msg, file will be copied instead - {e.Message}");
+            LogError($"Failed to process .json file into MessagePack .msg, file will be copied instead - {e.Message} (can be ignored if this is not meant to be a MessagePack file)");
             SafeCopyFile(file, output, overwrite: true);
+            return new ModFile(file, output);
         }
     }
 
