@@ -315,7 +315,7 @@ public class DataManager : IDataManager
                 if (File.Exists(gameOrigDataIndexPath))
                 {
                     LogInfo("Found orig_data.i in game folder, using it instead");
-                    File.Copy(gameOrigDataIndexPath, modLoaderDataIndexPath, overwrite: true);
+                    SafeCopyFile(gameOrigDataIndexPath, modLoaderDataIndexPath, overwrite: true);
 
                     copyGameDataIndex = false;
                 }
@@ -409,11 +409,11 @@ public class DataManager : IDataManager
                 if (_configuration.AutoConvertJsonToMsg && File.Exists(Path.ChangeExtension(file, ".json")))
                     LogWarn($"'{file}' will be ignored - .json file exists & already processed");
                 else
-                    File.Copy(file, output, overwrite: true);
+                    SafeCopyFile(file, output, overwrite: true);
 
                 break;
             default:
-                File.Copy(file, output, overwrite: true);
+                SafeCopyFile(file, output, overwrite: true);
                 break;
         }
     }
@@ -442,13 +442,13 @@ public class DataManager : IDataManager
             }
             else
             {
-                File.Copy(file, output, overwrite: true);
+                SafeCopyFile(file, output, overwrite: true);
             }
         }
         catch (Exception e)
         {
             LogError($"Failed to process .minfo file, file will be copied instead - {e.Message}");
-            File.Copy(file, output, overwrite: true);
+            SafeCopyFile(file, output, overwrite: true);
         }
     }
 
@@ -463,7 +463,7 @@ public class DataManager : IDataManager
         catch (Exception e)
         {
             LogError($"Failed to process .json file into MessagePack .msg, file will be copied instead - {e.Message}");
-            File.Copy(file, output, overwrite: true);
+            SafeCopyFile(file, output, overwrite: true);
         }
     }
 
@@ -502,6 +502,24 @@ public class DataManager : IDataManager
         {
             _moddedIndex.ArchiveFileHashes.RemoveAt(idx);
             _moddedIndex.FileToChunkIndexers.RemoveAt(idx);
+        }
+    }
+
+    /// <summary>
+    /// Safely copies a file.
+    /// </summary>
+    /// <param name="source"></param>
+    /// <param name="destination"></param>
+    /// <param name="overwrite"></param>
+    private void SafeCopyFile(string source, string destination, bool overwrite)
+    {
+        try
+        {
+            File.Copy(source, destination, overwrite);
+        }
+        catch (Exception ex)
+        {
+            LogError($"Failed to copy file '{source}' to '{destination}' - {ex.Message}");
         }
     }
 
