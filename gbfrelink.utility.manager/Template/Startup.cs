@@ -55,6 +55,9 @@ public class Startup : IMod
         _modLoader = (IModLoader)loaderApi;
         _modConfig = (IModConfig)modConfig;
         _logger = (ILogger)_modLoader.GetLogger();
+
+        _logger.WriteLine("[GBFRelinkManager] StartEx");
+
         _modLoader.GetController<IReloadedHooks>()?.TryGetTarget(out _hooks!);
 
         // Your config file is in Config.json.

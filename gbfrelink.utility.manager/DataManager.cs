@@ -76,6 +76,8 @@ public class DataManager : IDataManager
     private record ModFile(string SourcePath, string TargetPath);
     private List<ModFile> _modFiles = new List<ModFile>();
 
+    private Dictionary<string, string> _filesToModOwner = [];
+
     /// <summary>
     /// Registers & updates the index with all the potential GBFR files for a mod.
     /// </summary>
@@ -103,6 +105,10 @@ public class DataManager : IDataManager
         foreach (ModFile modFile in _modFiles)
         {
             string gamePath = modFile.SourcePath[(folder.Length + 1)..];
+            if (_filesToModOwner.TryGetValue(gamePath, out string modIdOwner))
+                LogWarn($"Mod Conflict: {modId} edits '{gamePath}' which is already edited by {modIdOwner}");
+            else
+                _filesToModOwner.Add(gamePath, modId);
 
             long fileSize = new FileInfo(modFile.TargetPath).Length;
             if (RegisterExternalFileToIndex(gamePath, (ulong)fileSize))
