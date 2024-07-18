@@ -1,9 +1,4 @@
-﻿using GBFRDataTools.Entities;
-using MessagePack;
-using Reloaded.Mod.Interfaces.Internal;
-using Reloaded.Mod.Interfaces;
-
-using System;
+﻿using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO.Hashing;
@@ -11,9 +6,18 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
+using System.Xml;
+
+using Reloaded.Mod.Interfaces.Internal;
+using Reloaded.Mod.Interfaces;
 
 using gbfrelink.utility.manager.Interfaces;
 using gbfrelink.utility.manager.Configuration;
+
+using GBFRDataTools.Entities;
+using GBFRDataTools.Files.BinaryXML;
+
+using MessagePack;
 
 using FlatSharp;
 
@@ -411,6 +415,9 @@ public class DataManager : IDataManager
             case ".json" when _configuration.AutoConvertJsonToMsg:
                 return ConvertToMsg(file, output);
 
+            case ".xml" when _configuration.AutoConvertXmlToBxm:
+                return ConvertToBxm(file, output.Replace(".bxm.xml", ".xml")); // Weird '.bxm.xml' produced by nier_cli..
+
             case ".msg":
                 if (_configuration.AutoConvertJsonToMsg && File.Exists(Path.ChangeExtension(file, ".json")))
                 {
@@ -478,6 +485,28 @@ public class DataManager : IDataManager
         catch (Exception e)
         {
             LogError($"Failed to process .json file into MessagePack .msg, file will be copied instead - {e.Message} (can be ignored if this is not meant to be a MessagePack file)");
+            SafeCopyFile(file, output, overwrite: true);
+            return new ModFile(file, output);
+        }
+    }
+
+    private ModFile ConvertToBxm(string file, string output)
+    {
+        LogInfo($"-> Converting .xml '{file}' to Binary XML .bxm..");
+        try
+        {
+            XmlDocument doc = new XmlDocument();
+            doc.Load(file);
+
+            string outputBxmPath = Path.ChangeExtension(output, ".bxm");
+            using var stream = File.OpenWrite(outputBxmPath);
+            XmlBin.Write(stream, doc);
+
+            return new ModFile(Path.ChangeExtension(file, ".bxm"), outputBxmPath);
+        }
+        catch (Exception e)
+        {
+            LogError($"Failed to process .xml file into Binary XML .msg, file will be copied instead - {e.Message} (can be ignored if this is not meant to be a MessagePack file)");
             SafeCopyFile(file, output, overwrite: true);
             return new ModFile(file, output);
         }

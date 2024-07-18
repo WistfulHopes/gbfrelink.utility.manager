@@ -40,6 +40,14 @@ public class Config : Configurable<Config>
         "This option should always be enabled.")]
     [DefaultValue(true)]
     public bool AutoConvertJsonToMsg { get; set; } = true;
+
+    [Category("Output Options")]
+    [DisplayName("Auto-Convert .xml to .bxm")]
+    [Description("Advanced users only. Whether to automatically convert any .xml files to .bxm (Binary XML) files.\n" +
+    "Please only provide .xml files if this option is enabled.\n\n" +
+    "This option should always be enabled.")]
+    [DefaultValue(true)]
+    public bool AutoConvertXmlToBxm { get; set; } = true;
 }
 
 /// <summary>
