@@ -502,7 +502,7 @@ public class DataManager : IDataManager
             using var stream = File.OpenWrite(outputBxmPath);
             XmlBin.Write(stream, doc);
 
-            return new ModFile(Path.ChangeExtension(file, ".bxm"), outputBxmPath);
+            return new ModFile(Path.ChangeExtension(file.Replace(".bxm.xml", ".xml"), ".bxm"), outputBxmPath);
         }
         catch (Exception e)
         {
