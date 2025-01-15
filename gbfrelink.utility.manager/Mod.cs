@@ -16,6 +16,7 @@ using GBFRDataTools.Entities;
 using gbfrelink.utility.manager.Template;
 using gbfrelink.utility.manager.Configuration;
 using gbfrelink.utility.manager.Interfaces;
+using Reloaded.Universal.Redirector.Interfaces;
 
 namespace gbfrelink.utility.manager;
 
@@ -28,12 +29,6 @@ public class Mod : ModBase, IExports // <= Do not Remove.
     /// Provides access to the mod loader API.
     /// </summary>
     private readonly IModLoader _modLoader;
-
-    /// <summary>
-    /// Provides access to the Reloaded.Hooks API.
-    /// </summary>
-    /// <remarks>This is null if you remove dependency on Reloaded.SharedLib.Hooks in your mod.</remarks>
-    private readonly IReloadedHooks? _hooks;
 
     /// <summary>
     /// Provides access to the Reloaded logger.
@@ -57,10 +52,11 @@ public class Mod : ModBase, IExports // <= Do not Remove.
 
     public DataManager _dataManager;
 
+    private readonly IRedirectorController _redirectorController;
+
     public Mod(ModContext context)
     {
         _modLoader = context.ModLoader;
-        _hooks = context.Hooks;
         _logger = context.Logger;
         _owner = context.Owner;
         _configuration = context.Configuration;
@@ -72,14 +68,22 @@ public class Mod : ModBase, IExports // <= Do not Remove.
         Debugger.Launch();
 #endif
 
-        _dataManager = new DataManager(_modConfig, _modLoader, _logger, _configuration);
+        var redirectorControllerRef = _modLoader.GetController<IRedirectorController>();
+        if (redirectorControllerRef == null || !redirectorControllerRef.TryGetTarget(out _redirectorController))
+        {
+            _logger.WriteLine("[GBFRelinkManager] Failed to initialize. Unable to get redirector controller.", _logger.ColorRed);
+            return;
+        }
+
+
+        _dataManager = new DataManager(_modConfig, _modLoader, _logger, _redirectorController, _configuration);
         if (!_dataManager.Initialize())
             _logger.WriteLine("[GBFRelinkManager] Failed to initialize. Mods will still be attempted to be loaded.", _logger.ColorRed);
 
         _modLoader.AddOrReplaceController<IDataManager>(_owner, _dataManager);
 
         _modLoader.ModLoading += ModLoading;
-        _modLoader.ModLoaded += ModLoaded;
+        _modLoader.OnModLoaderInitialized += AllModsLoaded;
 
         _logger.WriteLine("[GBFRelinkManager] GBFR Mod loader initialized.", _logger.ColorGreen);
     }
@@ -93,10 +97,11 @@ public class Mod : ModBase, IExports // <= Do not Remove.
         _dataManager.RegisterModFiles(modConfig.ModId, modDir);
     }
 
-    private void ModLoaded(IModV1 arg1, IModConfigV1 arg2)
+    private void AllModsLoaded()
     {
         _dataManager.UpdateIndex();
     }
+
 
     public Type[] GetTypes() => [typeof(IDataManager)];
 

@@ -25,7 +25,7 @@
   },
   "IsUniversalMod": false,
   "ModDependencies": [
-    "reloaded.sharedlib.hooks"
+    "reloaded.universal.redirector"
   ],
   "OptionalDependencies": [],
   "SupportedAppId": [

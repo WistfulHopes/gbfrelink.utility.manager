@@ -14,6 +14,8 @@ using Reloaded.Mod.Interfaces;
 using gbfrelink.utility.manager.Interfaces;
 using gbfrelink.utility.manager.Configuration;
 
+using Reloaded.Universal.Redirector.Interfaces;
+
 using GBFRDataTools.Entities;
 using GBFRDataTools.Files.BinaryXML;
 
@@ -28,12 +30,14 @@ public class DataManager : IDataManager
     private IModConfig _modConfig;
     private IModLoader _modLoader;
     private ILogger _logger;
+    private IRedirectorController _redirectorController;
     private Config _configuration;
 
-    private string _gameDir;
-    private IndexFile _originalIndex;
+    private IndexFile _indexFile;
     private IndexFile _moddedIndex;
     private string _dataPath;
+    private string _tempPath;
+    private string _gameDir;
 
     public ArchiveAccessor _archiveAccessor;
 
@@ -43,11 +47,12 @@ public class DataManager : IDataManager
     public const string INDEX_ORIGINAL_CODENAME = "relink";
     public const string INDEX_MODDED_CODENAME = "relink-reloaded-ii-mod";
 
-    public DataManager(IModConfig modConfig, IModLoader modLoader, ILogger logger, Config configuration)
+    public DataManager(IModConfig modConfig, IModLoader modLoader, ILogger logger, IRedirectorController redirectorController, Config configuration)
     {
         _modConfig = modConfig;
         _modLoader = modLoader;
         _logger = logger;
+        _redirectorController = redirectorController;
         _configuration = configuration;
     }
 
@@ -64,21 +69,18 @@ public class DataManager : IDataManager
         // Admittedly if it doesn't exist the person should have bigger concerns since bgm & movies are external files in the first place
         _dataPath = Path.Combine(_gameDir, "data");
 
-        if (!CreateGameDataDirectoryIfNeeded())
+        if (!CheckGameDirectory())
             return false;
 
-        if (!UpdateLocalDataIndex())
-            return false;
-
-        if (!OverwriteGameDataIndexForCleanState())
-            return false;
+        _tempPath = Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "temp");
+        Directory.CreateDirectory(_tempPath);
 
         _initialized = true;
         return true;
     }
 
-    private record ModFile(string SourcePath, string TargetPath);
-    private List<ModFile> _modFiles = new List<ModFile>();
+    private record ModFile(string SourcePath, string GamePath, string TargetPath);
+    private List<ModFile> _modFiles = [];
 
     private Dictionary<string, string> _filesToModOwner = [];
 
@@ -91,17 +93,10 @@ public class DataManager : IDataManager
     {
         CheckInitialized();
 
-        var allDirectories = Directory.GetDirectories(folder, "*", SearchOption.AllDirectories);
-        foreach (string dir in allDirectories)
-        {
-            string dirToCreate = dir.Replace(folder, _dataPath);
-            Directory.CreateDirectory(dirToCreate);
-        }
-
         var allFiles = Directory.GetFiles(folder, "*.*", SearchOption.AllDirectories);
         foreach (string newPath in allFiles)
         {
-            ModFile modFile = CookFileToOutput(newPath, newPath.Replace(folder, _dataPath));
+            ModFile modFile = ProcessFile(newPath, Path.GetRelativePath(folder, newPath), modId);
             if (modFile is not null)
                 _modFiles.Add(modFile);
         }
@@ -138,17 +133,14 @@ public class DataManager : IDataManager
 
         LogInfo($"-> Adding/Updating file '{gamePath}' ({fileData.Length} bytes)");
 
-        string tempFile = Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), @"temp", gamePath);
+        string modId = "unspecified";
+
+        string tempFile = Path.Combine(_tempPath, modId, gamePath);
         Directory.CreateDirectory(Path.GetDirectoryName(tempFile));
         File.WriteAllBytes(tempFile, fileData);
 
-        string outputPath = Path.Combine(_dataPath, gamePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(outputPath));
-
         RegisterExternalFileToIndex(gamePath, (ulong)fileData.Length);
-        CookFileToOutput(tempFile, Path.Combine(_dataPath, gamePath));
-
-        File.Delete(tempFile);
+        ProcessFile(tempFile, gamePath, modId);
     }
 
 
@@ -163,9 +155,11 @@ public class DataManager : IDataManager
 
         LogInfo($"-> Adding/Updating file '{filePath}' from '{filePath}'");
 
+        string modId = "unspecified";
+
         long fileSize = new FileInfo(filePath).Length;
         RegisterExternalFileToIndex(gamePath, (ulong)fileSize);
-        CookFileToOutput(filePath, Path.Combine(_dataPath, gamePath));
+        ProcessFile(filePath, gamePath, modId);
     }
 
     /// <summary>
@@ -177,11 +171,20 @@ public class DataManager : IDataManager
 
         byte[] outBuf = new byte[IndexFile.Serializer.GetMaxSize(_moddedIndex)];
         _moddedIndex.Codename = INDEX_MODDED_CODENAME; // Helps us keep of track whether this is an original index or not
-
         IndexFile.Serializer.Write(outBuf, _moddedIndex);
 
-        string dataIndexPath = Path.Combine(_gameDir, "data.i");
-        File.WriteAllBytes(dataIndexPath, outBuf);
+        string tempIndexPath = Path.Combine(_tempPath, "data.i");
+        File.WriteAllBytes(tempIndexPath, outBuf);
+
+        _redirectorController.AddRedirect(Path.Combine(_gameDir, "data.i"), tempIndexPath);
+        _redirectorController.Enable();
+
+        _redirectorController.Redirecting += Redirect;
+    }
+
+    public void Redirect(string oldPath, string newPath)
+    {
+        LogInfo("Redirect: " + newPath);
     }
 
     /// <summary>
@@ -223,7 +226,7 @@ public class DataManager : IDataManager
     {
         CheckInitialized();
 
-        _archiveAccessor ??= new ArchiveAccessor(_gameDir, _originalIndex);
+        _archiveAccessor ??= new ArchiveAccessor(_gameDir, _indexFile);
         return _archiveAccessor.GetFileData(fileName);
     }
 
@@ -240,161 +243,24 @@ public class DataManager : IDataManager
     /// <summary>
     /// Creates the game's data/ directory if it's somehow missing.
     /// </summary>
-    /// <returns>Whether the task was successful and the directory exists.</returns>
-    private bool CreateGameDataDirectoryIfNeeded()
+    /// <returns></returns>
+    private bool CheckGameDirectory()
     {
         if (!Directory.Exists(_dataPath))
         {
-            try
-            {
-                Directory.CreateDirectory(_dataPath);
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                LogError("ERROR: Game's data/ directory is missing and missing permissions to create it?");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                LogError($"ERROR: Unable to create game data/ directory - {ex.Message}");
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Creates a copy of the game's data index for local store.
-    /// </summary>
-    /// <returns>Whether the task is successful and local data.i is original & updated.</returns>
-    private bool UpdateLocalDataIndex()
-    {
-        string modDir = Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId));
-        string gameDataIndexPath = Path.Combine(_gameDir, "data.i");
-        string modLoaderDataIndexPath = Path.Combine(modDir, "orig_data.i");
-
-        if (!File.Exists(gameDataIndexPath))
-        {
-            LogError($"ERROR: Game's 'data.i' file does not exist. Ensure that this is not a mistake, or verify game files integrity.");
+            LogError("ERROR: Game's 'data' folder is somehow missing.  Verify game files integrity.");
             return false;
         }
 
-        byte[] gameIndexFile = File.ReadAllBytes(gameDataIndexPath);
-        IndexFile gameIndex;
-        try
+        string indexFilePath = Path.Combine(_gameDir, "data.i");
+        if (!File.Exists(Path.Combine(_gameDir, "data.i")))
         {
-            gameIndex = IndexFile.Serializer.Parse(gameIndexFile);
-        }
-        catch (Exception ex)
-        {
-            LogError($"ERROR: Unable to parse '{gameDataIndexPath}'. Corrupted or not supported? - {ex.Message}");
+            LogError("ERROR: Game's 'data.i' file is somehow missing.  Verify game files integrity.");
             return false;
         }
 
-        // Grab data.i from the game's folder. It'll be treated as the original we're storing locally
-        bool copyGameDataIndex = true;
-        if (!File.Exists(modLoaderDataIndexPath))
-        {
-            // We could not find data.i in manager folder (first time run, or can happen if the user deleted the manager folder),
-            // therefore check the game directory's and whether it's original
-
-            // Two heuristics to check if this is an original index file:
-            // - 1. check codename. the mod manager will create an index with "relink-reloaded-ii-mod"
-            // - 2. check table offset in flatbuffers file. flatsharp serializes the vtable slightly differently with a negative offset, enough to spot a difference
-            //      this one is useful if the index has been tampered by GBFRDataTools from non-reloaded mods
-
-            bool checkOrig = false;
-            if (gameIndex.Codename != INDEX_ORIGINAL_CODENAME)
-            {
-                LogError("ERROR: Game's 'data.i' appears to already be modded even though GBFR Mod Manager's local original data file is missing.");
-                checkOrig = true;
-            }
-            else if (BinaryPrimitives.ReadInt32LittleEndian(gameIndexFile.AsSpan(4)) != 0)
-            {
-                LogError("ERROR: Game's 'data.i' appears to already have been tampered with from outside the mod manager");
-                LogError("This can happen if you've installed mods that does not use the GBFR Mod Manager.");
-                LogError("This is unsupported and GBFR Mod Manager mods should be used instead.");
-                checkOrig = true;
-            }
-
-            if (checkOrig)
-            {
-                // If we're here, the game has a data.i but it's already been modded.
-                // Check if orig_data.i was created previously by the manager, and use it instead
-
-                string gameOrigDataIndexPath = Path.Combine(_gameDir, "orig_data.i");
-                if (File.Exists(gameOrigDataIndexPath))
-                {
-                    LogInfo("Found orig_data.i in game folder, using it instead");
-                    SafeCopyFile(gameOrigDataIndexPath, modLoaderDataIndexPath, overwrite: true);
-
-                    copyGameDataIndex = false;
-                }
-                else
-                {
-                    LogError("Could not find an original data.i to use. Verify integrity before using the mod manager.");
-                    return false;
-                }
-            }
-        }
-        else
-        {
-            if (gameIndex.Codename != INDEX_ORIGINAL_CODENAME || BinaryPrimitives.ReadInt32LittleEndian(gameIndexFile.AsSpan(4)) != 0)
-                return true; // data.i is already modded. do not update local original copy.
-
-            LogInfo("Game's data.i is original & different from local copy. Updating it.");
-        }
-
-        if (copyGameDataIndex)
-        {
-            try
-            {
-                File.Copy(gameDataIndexPath, modLoaderDataIndexPath, overwrite: true);
-            }
-            catch (UnauthorizedAccessException ex)
-            {
-                LogError($"ERROR: Could not copy game's data.i to mod manager's folder ({_modConfig.ModId}), missing permissions?");
-                return false;
-            }
-            catch (Exception ex)
-            {
-                LogError($"ERROR: Could not copy game's data.i to mod manager's folder ({_modConfig.ModId}) - {ex.Message}");
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    /// <summary>
-    /// Overwrites the game's data index with the original one to start as a clean state without mods.
-    /// </summary>
-    /// <returns></returns>
-    private bool OverwriteGameDataIndexForCleanState()
-    {
-        string modDir = Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId));
-        string gameDataIndexPath = Path.Combine(_gameDir, "data.i");
-        string modLoaderDataIndexPath = Path.Combine(modDir, "orig_data.i");
-
-        var origIndex = File.ReadAllBytes(modLoaderDataIndexPath);
-        _originalIndex = IndexFile.Serializer.Parse(origIndex);
-        _moddedIndex = IndexFile.Serializer.Parse(origIndex);
-
-        // Ensure to start with a fresh base, Otherwise if all mods are unloaded, the modded data.i still stays
-        File.WriteAllBytes(gameDataIndexPath, origIndex);
-
-        // Also make a backup of the original data.i in the game's directory
-        string gameDirOriginalIndexPath = Path.Combine(_gameDir, "orig_data.i");
-        try
-        {
-            LogInfo($"Copying original data.i to '{gameDirOriginalIndexPath}' for backup purposes");
-            File.Copy(modLoaderDataIndexPath, gameDirOriginalIndexPath, overwrite: true);
-        }
-        catch (Exception e)
-        {
-            LogWarn($"WARN: Attempted to create an original data.i backup but copy to {gameDirOriginalIndexPath} failed - {e.Message}");
-        }
+        _indexFile = IndexFile.Serializer.Parse(File.ReadAllBytes(indexFilePath));
+        _moddedIndex = IndexFile.Serializer.Parse(File.ReadAllBytes(indexFilePath));
 
         return true;
     }
@@ -402,41 +268,48 @@ public class DataManager : IDataManager
     /// <summary>
     /// Process a file to game output.
     /// </summary>
-    /// <param name="file"></param>
+    /// <param name="sourceFile"></param>
     /// <param name="output"></param>
-    private ModFile CookFileToOutput(string file, string output)
+    private ModFile ProcessFile(string sourceFile, string gamePath, string modId)
     {
-        string ext = Path.GetExtension(file);
+        string ext = Path.GetExtension(sourceFile);
+
+        ModFile modFile;
         switch (ext)
         {
             case ".minfo" when _configuration.AutoUpgradeMInfo:
-                return UpgradeMInfoIfNeeded(file, output);
+                modFile = UpgradeMInfoIfNeeded(sourceFile, gamePath, modId);
+                break;
 
             case ".json" when _configuration.AutoConvertJsonToMsg:
-                return ConvertToMsg(file, output);
+                modFile = ConvertToMsg(sourceFile, gamePath, modId);
+                break;
 
             case ".xml" when _configuration.AutoConvertXmlToBxm:
-                return ConvertToBxm(file, output.Replace(".bxm.xml", ".xml")); // Weird '.bxm.xml' produced by nier_cli..
+                modFile = ConvertToBxm(sourceFile, gamePath, modId); // Weird '.bxm.xml' produced by nier_cli..
+                break;
 
             case ".msg":
-                if (_configuration.AutoConvertJsonToMsg && File.Exists(Path.ChangeExtension(file, ".json")))
+                if (_configuration.AutoConvertJsonToMsg && File.Exists(Path.ChangeExtension(sourceFile, ".json")))
                 {
-                    LogWarn($"'{file}' will be ignored - .json file exists & already processed");
+                    LogWarn($"'{sourceFile}' will be ignored - .json file exists & already processed");
                     return null!;
                 }
                 else
                 {
-                    SafeCopyFile(file, output, overwrite: true);
-                    return new ModFile(file, output);
+                    modFile = new ModFile(sourceFile, gamePath, sourceFile);
                 }
-
+                break;
             default:
-                SafeCopyFile(file, output, overwrite: true);
-                return new ModFile(file, output);
+                modFile = new ModFile(sourceFile, gamePath, sourceFile);
+                break;
         }
+
+        _redirectorController.AddRedirect(Path.Combine(_dataPath, modFile.GamePath), modFile.TargetPath);
+        return modFile;
     }
 
-    private ModFile UpgradeMInfoIfNeeded(string file, string output)
+    private ModFile UpgradeMInfoIfNeeded(string file, string gamePath, string modId)
     {
         // GBFR v1.1.1 upgraded the minfo file - magic/build date changed, two new fields added.
         // Rendered models invisible due to magic check fail.
@@ -454,43 +327,47 @@ public class DataManager : IDataManager
                 int size = ModelInfo.Serializer.GetMaxSize(modelInfo);
                 byte[] buf = new byte[size];
                 ModelInfo.Serializer.Write(buf, modelInfo);
-                File.WriteAllBytes(output, buf);
+                string outputPath = GetTempFilePathForMod(gamePath, modId);
+                File.WriteAllBytes(outputPath, buf);
 
                 LogInfo($"-> .minfo file '{file}' magic has been updated to be compatible");
-            }
-            else
-            {
-                SafeCopyFile(file, output, overwrite: true);
             }
         }
         catch (Exception e)
         {
             LogError($"Failed to process .minfo file, file will be copied instead - {e.Message}");
-            SafeCopyFile(file, output, overwrite: true);
         }
 
-        return new ModFile(file, output);
+        return new ModFile(file, gamePath, file);
     }
 
-    private ModFile ConvertToMsg(string file, string output)
+    private string GetTempFilePathForMod(string gamePath, string modId)
     {
-        LogInfo($"-> Converting .json '{file}' to MessagePack .msg..");
+        string path = Path.Combine(_tempPath, modId, gamePath);
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        return path;
+    }
+
+    private ModFile ConvertToMsg(string sourceFile, string gamePath, string modId)
+    {
+        LogInfo($"-> Converting .json '{sourceFile}' to MessagePack .msg..");
         try
         {
-            string outputMsgPath = Path.ChangeExtension(output, ".msg");
-            var json = File.ReadAllText(file);
-            File.WriteAllBytes(outputMsgPath, MessagePackSerializer.ConvertFromJson(json));
-            return new ModFile(Path.ChangeExtension(file, ".msg"), outputMsgPath);
+            string msgGamePath = Path.ChangeExtension(gamePath, ".msg");
+
+            var json = File.ReadAllText(sourceFile);
+            string outputPath = GetTempFilePathForMod(msgGamePath, modId);
+            File.WriteAllBytes(outputPath, MessagePackSerializer.ConvertFromJson(json));
+            return new ModFile(sourceFile, msgGamePath, outputPath);
         }
         catch (Exception e)
         {
-            LogError($"Failed to process .json file into MessagePack .msg, file will be copied instead - {e.Message} (can be ignored if this is not meant to be a MessagePack file)");
-            SafeCopyFile(file, output, overwrite: true);
-            return new ModFile(file, output);
+            LogError($"Failed to process .json file into MessagePack .msg: {e.Message} (can be ignored if this is not meant to be a MessagePack file)");
+            return new ModFile(sourceFile, gamePath, sourceFile);
         }
     }
 
-    private ModFile ConvertToBxm(string file, string output)
+    private ModFile ConvertToBxm(string file, string gamePath, string modId)
     {
         LogInfo($"-> Converting .xml '{file}' to Binary XML .bxm..");
         try
@@ -498,17 +375,17 @@ public class DataManager : IDataManager
             XmlDocument doc = new XmlDocument();
             doc.Load(file);
 
-            string outputBxmPath = Path.ChangeExtension(output, ".bxm");
+            string bxmGamePath = Path.ChangeExtension(gamePath.Replace(".bxm.xml", ".xml"), ".bxm");
+            string outputBxmPath = GetTempFilePathForMod(gamePath, modId);
             using var stream = File.OpenWrite(outputBxmPath);
             XmlBin.Write(stream, doc);
 
-            return new ModFile(Path.ChangeExtension(file.Replace(".bxm.xml", ".xml"), ".bxm"), outputBxmPath);
+            return new ModFile(file, bxmGamePath, outputBxmPath);
         }
         catch (Exception e)
         {
-            LogError($"Failed to process .xml file into Binary XML .msg, file will be copied instead - {e.Message} (can be ignored if this is not meant to be a MessagePack file)");
-            SafeCopyFile(file, output, overwrite: true);
-            return new ModFile(file, output);
+            LogError($"Failed to process .xml file into Binary XML .msg: {e.Message} (can be ignored if this is not meant to be a MessagePack file)");
+            return new ModFile(file, gamePath, file);
         }
     }
 
@@ -547,24 +424,6 @@ public class DataManager : IDataManager
         {
             _moddedIndex.ArchiveFileHashes.RemoveAt(idx);
             _moddedIndex.FileToChunkIndexers.RemoveAt(idx);
-        }
-    }
-
-    /// <summary>
-    /// Safely copies a file.
-    /// </summary>
-    /// <param name="source"></param>
-    /// <param name="destination"></param>
-    /// <param name="overwrite"></param>
-    private void SafeCopyFile(string source, string destination, bool overwrite)
-    {
-        try
-        {
-            File.Copy(source, destination, overwrite);
-        }
-        catch (Exception ex)
-        {
-            LogError($"Failed to copy file '{source}' to '{destination}' - {ex.Message}");
         }
     }
 

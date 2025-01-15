@@ -1,11 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
     <PropertyGroup>
-        <TargetFramework>net8.0-windows</TargetFramework>
+        <TargetFramework>net9.0-windows7.0</TargetFramework>
         <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
         <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
         <LangVersion>12</LangVersion>
-        <Nullable>enable</Nullable>
+        <Nullable>disable</Nullable>
         <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
         <OutputPath>$(RELOADEDIIMODS)/gbfrelink.utility.manager</OutputPath>
         <ImplicitUsings>enable</ImplicitUsings>
@@ -53,6 +53,7 @@
         <PackageReference Include="MessagePack" Version="2.5.140" />
         <PackageReference Include="Reloaded.Mod.Interfaces" Version="2.4.0" ExcludeAssets="runtime" />
         <PackageReference Include="Reloaded.SharedLib.Hooks" Version="1.9.0" />
+        <PackageReference Include="Reloaded.Universal.Redirector.Interfaces" Version="1.1.0" />
         <PackageReference Include="Syroot.BinaryData" Version="5.2.2" />
         <PackageReference Include="Syroot.BinaryData.Memory" Version="5.2.2" />
         <PackageReference Include="System.IO.Hashing" Version="8.0.0" />
