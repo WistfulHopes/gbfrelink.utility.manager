@@ -3,4 +3,4 @@ Mod management utility for Granblue Fantasy Relink using Reloaded II. Utilizes c
 
 ## Note
 
-Does **not** use [Reloaded II File Redirector](https://github.com/Reloaded-Project/reloaded.universal.redirector) as the game appears to crash when too many files are redirected.
+Does **not** use [Reloaded II File Redirector](https://github.com/Reloaded-Project/reloaded.universal.redirector) as the game appears to crash when too many files are redirected. Redirector support is available in the `redirector` branch for reference.
