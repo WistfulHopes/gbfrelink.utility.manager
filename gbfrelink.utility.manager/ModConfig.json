@@ -2,7 +2,7 @@
   "ModId": "gbfrelink.utility.manager",
   "ModName": "Granblue Fantasy Relink Mod Manager",
   "ModAuthor": "Nenkai/WistfulHopes",
-  "ModVersion": "1.2.1",
+  "ModVersion": "1.3.0",
   "ModDescription": "Mod management utility for Granblue Fantasy Relink",
   "ModDll": "gbfrelink.utility.manager.dll",
   "ModIcon": "Preview.png",
@@ -25,6 +25,8 @@
   },
   "IsUniversalMod": false,
   "ModDependencies": [
+    "Reloaded.Memory.SigScan.ReloadedII",
+    "reloaded.sharedlib.hooks",
     "reloaded.universal.redirector"
   ],
   "OptionalDependencies": [],

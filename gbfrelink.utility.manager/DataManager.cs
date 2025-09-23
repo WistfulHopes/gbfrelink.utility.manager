@@ -173,7 +173,7 @@ public class DataManager : IDataManager
         _moddedIndex.Codename = INDEX_MODDED_CODENAME; // Helps us keep of track whether this is an original index or not
         IndexFile.Serializer.Write(outBuf, _moddedIndex);
 
-        string tempIndexPath = Path.Combine(_tempPath, "data.i");
+        string tempIndexPath = GetTempIndexFilePath();
         File.WriteAllBytes(tempIndexPath, outBuf);
 
         _redirectorController.AddRedirect(Path.Combine(_gameDir, "data.i"), tempIndexPath);
@@ -184,8 +184,10 @@ public class DataManager : IDataManager
 
     public void Redirect(string oldPath, string newPath)
     {
-        LogInfo("Redirect: " + newPath);
+        if (_configuration.PrintRedirectedFiles)
+            LogInfo("Redirect: " + newPath);
     }
+
 
     /// <summary>
     /// Returns whether a game file exists.
@@ -238,6 +240,9 @@ public class DataManager : IDataManager
     }
 
     #endregion
+
+    public string GetTempIndexFilePath()
+        => Path.Combine(_tempPath, "data.i");
 
     #region Private
     /// <summary>
@@ -435,22 +440,22 @@ public class DataManager : IDataManager
 
     private void LogInfo(string str)
     {
-        _logger.WriteLine($"[GBFRelinkManager] {str}");
+        _logger.WriteLine($"[{_modConfig.ModId}] {str}");
     }
 
     private void LogError(string str)
     {
-        _logger.WriteLine($"[GBFRelinkManager] {str}", _logger.ColorRed);
+        _logger.WriteLine($"[{_modConfig.ModId}] {str}", _logger.ColorRed);
     }
 
     private void LogSuccess(string str)
     {
-        _logger.WriteLine($"[GBFRelinkManager] {str}", _logger.ColorGreen);
+        _logger.WriteLine($"[{_modConfig.ModId}] {str}", _logger.ColorGreen);
     }
 
     private void LogWarn(string str)
     {
-        _logger.WriteLine($"[GBFRelinkManager] {str}", _logger.ColorYellow);
+        _logger.WriteLine($"[{_modConfig.ModId}] {str}", _logger.ColorYellow);
     }
     #endregion
 

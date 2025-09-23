@@ -48,6 +48,13 @@ public class Config : Configurable<Config>
     "This option should always be enabled.")]
     [DefaultValue(true)]
     public bool AutoConvertXmlToBxm { get; set; } = true;
+
+    [Category("Console")]
+    [DisplayName("Print Redirected Files")]
+    [Description("Whether to print redirected files in the console.\n\n" +
+"Useful for modders to see if modded files have been loaded.")]
+    [DefaultValue(true)]
+    public bool PrintRedirectedFiles { get; set; } = true;
 }
 
 /// <summary>
