@@ -4,6 +4,7 @@ using GBFRDataTools;
 using GBFRDataTools.Entities;
 
 using gbfrelink.utility.manager.Configuration;
+using gbfrelink.utility.manager.Entities;
 using gbfrelink.utility.manager.Interfaces;
 using gbfrelink.utility.manager.Template;
 
@@ -68,6 +69,8 @@ public class Mod : ModBase, IExports // <= Do not Remove.
     private IHook<QuerySizeDelegate> _queryFileSizeHook;
     private unsafe delegate uint QuerySizeDelegate(StringSpan* fileName);
 
+    private Stopwatch _sw;
+
     public Mod(ModContext context)
     {
         _modLoader = context.ModLoader;
@@ -105,6 +108,8 @@ public class Mod : ModBase, IExports // <= Do not Remove.
 
         _modLoader.AddOrReplaceController<IDataManager>(_owner, _dataManager);
 
+        _sw = Stopwatch.StartNew();
+
         _modLoader.ModLoading += ModLoading;
         _modLoader.OnModLoaderInitialized += AllModsLoaded;
 
@@ -121,7 +126,7 @@ public class Mod : ModBase, IExports // <= Do not Remove.
         // but only reads as much as what std::filesystem::file_size/QueryDirectory returns.
 
         // It would be especially annoying when the index was larger and it struggled to find files in the index. Why?
-        // Because part of the index buffer was zeroed. So binary search would eventually just search zeroes as it reached the bottom of the file.
+        // Because part of the index buffer was zeroed. So binary search for a hash would eventually just search zeroes as it reached the bottom of the file.
 
         SigScan("55 41 57 41 56 41 54 56 57 53 48 81 EC ?? ?? ?? ?? 48 8D AC 24 ?? ?? ?? ?? 48 83 E4 ?? 48 89 E3 48 89 AB ?? ?? ?? ?? 48 C7 45 ?? ?? ?? ?? ?? C5 F8 57 C0",
             "FileRaw::QuerySize", address =>
@@ -173,7 +178,33 @@ public class Mod : ModBase, IExports // <= Do not Remove.
 
     private void AllModsLoaded()
     {
+        if (_configuration.ShowModLoaderInfo)
+        {
+            var modDir = Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), @"GBFR\data");
+            foreach (var region in new string[] { "bp", "cs", "ct", "en", "es", "fr", "ge", "it", "jp", "ko" })
+            {
+                byte[] msgFile = _dataManager.GetModdedOrAchiveFile($"system/table/text/{region}/text_temp.msg");
+                var textData = TextDataFile.Read(msgFile, true);
+                var versionColumn = textData.Rows.FirstOrDefault(e => e.Id_hash == "TXT_TITLE_VERSION");
+                versionColumn.Text += $"\n";
+                versionColumn.Text += $"Reloaded-II {_modLoader.GetLoaderVersion()} by Sewer76\n";
+                versionColumn.Text += $"Granblue Fantasy Relink - Mod Loader {_modConfig.ModVersion} by Nenkai\n";
+                versionColumn.Text += $"Modding Website: nenkai.github.io/relink-modding/\n";
+                versionColumn.Text += $"Support: ko-fi.com/nenkai\n";
+                versionColumn.Text += $"Discord: discord.gg/gbfr / discord.gg/KRm6WtQkVR";
+
+                byte[] msgBytes = textData.Write();
+
+                string outputDir = Path.Combine(modDir, $"system/table/text/{region}/text_temp.msg");
+                Directory.CreateDirectory(Path.GetDirectoryName(outputDir));
+                File.WriteAllBytes(outputDir, msgBytes);
+            }
+
+            _dataManager.RegisterModFiles(_modConfig.ModId, modDir);
+        }
+
         _dataManager.UpdateIndex();
+        _logger.WriteLine($"[{_modConfig.ModId}] Index updated, all mods loaded. Time taken: {_sw.Elapsed}", _logger.ColorGreen);
     }
 
 

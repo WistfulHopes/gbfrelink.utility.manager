@@ -1,27 +1,28 @@
-﻿using System;
-using System.Buffers.Binary;
-using System.Collections.Generic;
-using System.IO.Hashing;
-using System.Linq;
-using System.Reflection;
-using System.Text;
-using System.Threading.Tasks;
-using System.Xml;
-
-using Reloaded.Mod.Interfaces.Internal;
-using Reloaded.Mod.Interfaces;
-
-using gbfrelink.utility.manager.Interfaces;
-using gbfrelink.utility.manager.Configuration;
-
-using Reloaded.Universal.Redirector.Interfaces;
+﻿using FlatSharp;
 
 using GBFRDataTools.Entities;
 using GBFRDataTools.Files.BinaryXML;
 
+using gbfrelink.utility.manager.Configuration;
+using gbfrelink.utility.manager.Interfaces;
+
 using MessagePack;
 
-using FlatSharp;
+using Reloaded.Mod.Interfaces;
+using Reloaded.Mod.Interfaces.Internal;
+using Reloaded.Universal.Redirector.Interfaces;
+
+using System;
+using System.Buffers.Binary;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO.Hashing;
+using System.Linq;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Threading.Tasks;
+using System.Xml;
 
 namespace gbfrelink.utility.manager;
 
@@ -35,11 +36,13 @@ public class DataManager : IDataManager
 
     private IndexFile _indexFile;
     private IndexFile _moddedIndex;
+    private string _loaderDir;
     private string _dataPath;
     private string _tempPath;
     private string _gameDir;
 
     public ArchiveAccessor _archiveAccessor;
+    private ModFileCacheRegistry _cacheRegistry;
 
     private bool _initialized;
     public bool Initialized => _initialized;
@@ -54,6 +57,8 @@ public class DataManager : IDataManager
         _logger = logger;
         _redirectorController = redirectorController;
         _configuration = configuration;
+
+        _cacheRegistry = new ModFileCacheRegistry(_logger, _modConfig);
     }
 
     #region Public API
@@ -68,21 +73,31 @@ public class DataManager : IDataManager
         // Create game's data/ directory if it doesn't exist already
         // Admittedly if it doesn't exist the person should have bigger concerns since bgm & movies are external files in the first place
         _dataPath = Path.Combine(_gameDir, "data");
+        _loaderDir = _modLoader.GetDirectoryForModId(_modConfig.ModId);
 
         if (!CheckGameDirectory())
             return false;
 
-        _tempPath = Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "temp");
+        string cacheFilePath = Path.Combine(_loaderDir, "cached_files.txt");
+        if (File.Exists(cacheFilePath))
+        {
+            _logger.WriteLine($"[{_modConfig.ModId}] Reading cache registry found...");
+            _cacheRegistry.ReadCache(cacheFilePath);
+        }
+        else
+            _logger.WriteLine($"[{_modConfig.ModId}] No cache registry file found, one will be created..");
+
+        _tempPath = Path.Combine(_loaderDir, "temp");
         Directory.CreateDirectory(_tempPath);
 
         _initialized = true;
         return true;
     }
 
-    private record ModFile(string SourcePath, string GamePath, string TargetPath);
+    private record ModFile(string ModId, string SourcePath, string GamePath, string TargetPath);
     private List<ModFile> _modFiles = [];
 
-    private Dictionary<string, string> _filesToModOwner = [];
+    private Dictionary<string, ModFile> _filesToModOwner = [];
 
     /// <summary>
     /// Registers & updates the index with all the potential GBFR files for a mod.
@@ -93,31 +108,48 @@ public class DataManager : IDataManager
     {
         CheckInitialized();
 
+        ArgumentException.ThrowIfNullOrWhiteSpace(modId, nameof(modId));
+        ArgumentException.ThrowIfNullOrWhiteSpace(folder, nameof(folder));
+
+        _logger.WriteLine($"[{_modConfig.ModId}] Registering files for {modId}...");
+
+        int numFilesForMod = 0;
         var allFiles = Directory.GetFiles(folder, "*.*", SearchOption.AllDirectories);
         foreach (string newPath in allFiles)
         {
-            ModFile modFile = ProcessFile(newPath, Path.GetRelativePath(folder, newPath), modId);
+            ModFile modFile = ProcessFile(newPath, Path.GetRelativePath(folder, newPath).Replace('\\', '/'), modId);
             if (modFile is not null)
+            {
                 _modFiles.Add(modFile);
+                numFilesForMod++;
+            }
         }
 
         foreach (ModFile modFile in _modFiles)
         {
-            string gamePath = modFile.SourcePath[(folder.Length + 1)..];
-            if (_filesToModOwner.TryGetValue(gamePath, out string modIdOwner))
-                LogWarn($"Mod Conflict: {modId} edits '{gamePath}' which is already edited by {modIdOwner}");
+            if (_filesToModOwner.TryGetValue(modFile.GamePath, out ModFile modIdOwner))
+            {
+                LogWarn($"Note: Potential conflict - {modId} edits '{modFile.GamePath}' which is already edited by {modIdOwner.ModId}");
+                _filesToModOwner[modFile.GamePath] = modFile;
+            }
             else
-                _filesToModOwner.Add(gamePath, modId);
+                _filesToModOwner.Add(modFile.GamePath, modFile);
 
             long fileSize = new FileInfo(modFile.TargetPath).Length;
-            if (RegisterExternalFileToIndex(gamePath, (ulong)fileSize))
-                LogInfo($"- {modId}: Added {gamePath} as new external file");
+            if (RegisterExternalFileToIndex(modFile.GamePath, (ulong)fileSize))
+            {
+                if (_configuration.VerboseLogging)
+                    LogInfo($"- {modId}: Added {modFile.GamePath} as new external file");
+            }
             else
-                LogInfo($"- {modId}: Updated {gamePath} external file");
+            {
+                if (_configuration.VerboseLogging)
+                    LogInfo($"- {modId}: Updated {modFile.GamePath} external file");
+            }
         }
 
         LogInfo("");
-        LogInfo($"-> {_modFiles.Count} files have been added or updated to the external file list ({modId}).");
+        LogInfo($"-> {numFilesForMod} files have been added or updated to the external file list ({modId}).");
 
         _modFiles.Clear();
     }
@@ -131,12 +163,13 @@ public class DataManager : IDataManager
     {
         CheckInitialized();
 
+        gamePath = gamePath.Replace('\\', '/');
+
         LogInfo($"-> Adding/Updating file '{gamePath}' ({fileData.Length} bytes)");
 
         string modId = "unspecified";
 
-        string tempFile = Path.Combine(_tempPath, modId, gamePath);
-        Directory.CreateDirectory(Path.GetDirectoryName(tempFile));
+        string tempFile = GetTempFilePathForMod(gamePath, modId);
         File.WriteAllBytes(tempFile, fileData);
 
         RegisterExternalFileToIndex(gamePath, (ulong)fileData.Length);
@@ -152,6 +185,8 @@ public class DataManager : IDataManager
     public void AddOrUpdateExternalFile(string filePath, string gamePath)
     {
         CheckInitialized();
+
+        gamePath = gamePath.Replace('\\', '/');
 
         LogInfo($"-> Adding/Updating file '{filePath}' from '{filePath}'");
 
@@ -169,6 +204,8 @@ public class DataManager : IDataManager
     {
         CheckInitialized();
 
+        _logger.WriteLine($"[{_modConfig.ModId}] Serializing index.");
+
         byte[] outBuf = new byte[IndexFile.Serializer.GetMaxSize(_moddedIndex)];
         _moddedIndex.Codename = INDEX_MODDED_CODENAME; // Helps us keep of track whether this is an original index or not
         IndexFile.Serializer.Write(outBuf, _moddedIndex);
@@ -176,10 +213,15 @@ public class DataManager : IDataManager
         string tempIndexPath = GetTempIndexFilePath();
         File.WriteAllBytes(tempIndexPath, outBuf);
 
+        // Write cache
+        _cacheRegistry.WriteCache(Path.Combine(_loaderDir, "cached_files.txt"));
+
         _redirectorController.AddRedirect(Path.Combine(_gameDir, "data.i"), tempIndexPath);
         _redirectorController.Enable();
 
         _redirectorController.Redirecting += Redirect;
+
+        _logger.WriteLine($"[{_modConfig.ModId}] Done. Index redirected to {tempIndexPath}.");
     }
 
     public void Redirect(string oldPath, string newPath)
@@ -232,6 +274,22 @@ public class DataManager : IDataManager
         return _archiveAccessor.GetFileData(fileName);
     }
 
+    public byte[] GetModdedOrAchiveFile(string fileName)
+    {
+        CheckInitialized();
+
+        fileName = fileName.Replace('\\', '/').ToLower();
+
+        if (_filesToModOwner.TryGetValue(fileName, out ModFile modFile))
+        {
+            byte[] fileData = File.ReadAllBytes(modFile.TargetPath);
+            return fileData;
+        }
+
+        _archiveAccessor ??= new ArchiveAccessor(_gameDir, _indexFile);
+        return _archiveAccessor.GetFileData(fileName);
+    }
+
     public string GetDataPath()
     {
         CheckInitialized();
@@ -253,15 +311,18 @@ public class DataManager : IDataManager
     {
         if (!Directory.Exists(_dataPath))
         {
-            LogError("ERROR: Game's 'data' folder is somehow missing.  Verify game files integrity.");
+            LogError("ERROR: Game's 'data' folder is somehow missing. Verify game files integrity.");
             return false;
         }
 
+        // Pre-1.3.0 loader which tampered with the game dir's index and didn't use the redirector. restore it if it still exists.
+        string origDataIndexPath = Path.Combine(_gameDir, "orig_data.i");
         string indexFilePath = Path.Combine(_gameDir, "data.i");
-        if (!File.Exists(Path.Combine(_gameDir, "data.i")))
+        if (File.Exists(origDataIndexPath))
         {
-            LogError("ERROR: Game's 'data.i' file is somehow missing.  Verify game files integrity.");
-            return false;
+            LogWarn($"Found old deprecated orig_data.i file. Replacing data.i with it.");
+            File.Copy(origDataIndexPath, indexFilePath, overwrite: true);
+            File.Delete(origDataIndexPath);
         }
 
         _indexFile = IndexFile.Serializer.Parse(File.ReadAllBytes(indexFilePath));
@@ -298,23 +359,46 @@ public class DataManager : IDataManager
                 if (_configuration.AutoConvertJsonToMsg && File.Exists(Path.ChangeExtension(sourceFile, ".json")))
                 {
                     LogWarn($"'{sourceFile}' will be ignored - .json file exists & already processed");
+                    AddRedirectPath(Path.Combine(_dataPath, gamePath), sourceFile);
+
                     return null!;
                 }
                 else
                 {
-                    modFile = new ModFile(sourceFile, gamePath, sourceFile);
+                    modFile = new ModFile(modId, sourceFile, gamePath, sourceFile);
+                    var cachedEntry = _cacheRegistry.AddEntry(modId, gamePath, File.GetLastWriteTime(sourceFile));
+                    cachedEntry.IsUsed = true;
                 }
                 break;
             default:
-                modFile = new ModFile(sourceFile, gamePath, sourceFile);
+                {
+                    modFile = new ModFile(modId, sourceFile, gamePath, sourceFile);
+                    var cachedEntry = _cacheRegistry.AddEntry(modId, gamePath, File.GetLastWriteTime(sourceFile));
+                    cachedEntry.IsUsed = true;
+                }
+
                 break;
         }
 
-        _redirectorController.AddRedirect(Path.Combine(_dataPath, modFile.GamePath), modFile.TargetPath);
+        AddRedirectPath(Path.Combine(_dataPath, modFile.GamePath), modFile.TargetPath);
         return modFile;
     }
 
-    private ModFile UpgradeMInfoIfNeeded(string file, string gamePath, string modId)
+    /// <summary>
+    /// Redirects a source path (original file) to use the target path (modded file) instead.
+    /// </summary>
+    /// <param name="sourcePath"></param>
+    /// <param name="targetPath"></param>
+    private void AddRedirectPath(string sourcePath, string targetPath)
+    {
+        // Normalization matters for redirector controller for some reason.
+        sourcePath = sourcePath.Replace('/', '\\');
+        targetPath = targetPath.Replace('/', '\\');
+
+        _redirectorController.AddRedirect(sourcePath, targetPath);
+    }
+
+    private ModFile UpgradeMInfoIfNeeded(string sourceFile, string gamePath, string modId)
     {
         // GBFR v1.1.1 upgraded the minfo file - magic/build date changed, two new fields added.
         // Rendered models invisible due to magic check fail.
@@ -322,7 +406,7 @@ public class DataManager : IDataManager
 
         try
         {
-            var minfoBytes = File.ReadAllBytes(file);
+            var minfoBytes = File.ReadAllBytes(sourceFile);
             ModelInfo modelInfo = ModelInfo.Serializer.Parse(minfoBytes);
 
             if (modelInfo.Magic < 20240213)
@@ -335,7 +419,12 @@ public class DataManager : IDataManager
                 string outputPath = GetTempFilePathForMod(gamePath, modId);
                 File.WriteAllBytes(outputPath, buf);
 
-                LogInfo($"-> .minfo file '{file}' magic has been updated to be compatible");
+                LogInfo($"-> .minfo file '{sourceFile}' magic has been updated to be compatible");
+
+                var cachedEntry = _cacheRegistry.AddEntry(modId, gamePath, File.GetLastWriteTime(sourceFile));
+                cachedEntry.IsUsed = true;
+
+                return new ModFile(modId, sourceFile, gamePath, outputPath);
             }
         }
         catch (Exception e)
@@ -343,7 +432,8 @@ public class DataManager : IDataManager
             LogError($"Failed to process .minfo file, file will be copied instead - {e.Message}");
         }
 
-        return new ModFile(file, gamePath, file);
+
+        return new ModFile(modId, sourceFile, gamePath, sourceFile);
     }
 
     private string GetTempFilePathForMod(string gamePath, string modId)
@@ -355,42 +445,79 @@ public class DataManager : IDataManager
 
     private ModFile ConvertToMsg(string sourceFile, string gamePath, string modId)
     {
-        LogInfo($"-> Converting .json '{sourceFile}' to MessagePack .msg..");
+        string msgGamePath = Path.ChangeExtension(gamePath, ".msg").Replace('\\', '/');
+
         try
         {
-            string msgGamePath = Path.ChangeExtension(gamePath, ".msg");
+            string outputPath = GetTempFilePathForMod(msgGamePath, modId);
+
+            var lastModified = File.GetLastWriteTime(sourceFile);
+            if (File.Exists(outputPath) && _cacheRegistry.TryGetFileIfUpToDate(modId, gamePath, lastModified, out CachedModFileInfo cachedFileInfo))
+            {
+                cachedFileInfo.IsUsed = true;
+
+                if (_configuration.VerboseLogging)
+                    LogInfo($"-> {msgGamePath} ({modId}) - already up to date.");
+
+                return new ModFile(modId, sourceFile, msgGamePath, outputPath);
+            }
+
+            LogInfo($"-> Converting .json '{sourceFile}' ({modId}) to MessagePack .msg..");
 
             var json = File.ReadAllText(sourceFile);
-            string outputPath = GetTempFilePathForMod(msgGamePath, modId);
             File.WriteAllBytes(outputPath, MessagePackSerializer.ConvertFromJson(json));
-            return new ModFile(sourceFile, msgGamePath, outputPath);
+
+            var cachedEntry = _cacheRegistry.AddEntry(modId, gamePath, lastModified);
+            cachedEntry.IsUsed = true;
+            return new ModFile(modId, sourceFile, msgGamePath, outputPath);
         }
         catch (Exception e)
         {
             LogError($"Failed to process .json file into MessagePack .msg: {e.Message} (can be ignored if this is not meant to be a MessagePack file)");
-            return new ModFile(sourceFile, gamePath, sourceFile);
+
+            var cachedEntry = _cacheRegistry.AddEntry(modId, gamePath, File.GetLastWriteTime(sourceFile));
+            cachedEntry.IsUsed = true;
+            return new ModFile(modId, sourceFile, msgGamePath, sourceFile);
         }
     }
 
-    private ModFile ConvertToBxm(string file, string gamePath, string modId)
+    private ModFile ConvertToBxm(string sourceFile, string gamePath, string modId)
     {
-        LogInfo($"-> Converting .xml '{file}' to Binary XML .bxm..");
         try
         {
-            XmlDocument doc = new XmlDocument();
-            doc.Load(file);
-
-            string bxmGamePath = Path.ChangeExtension(gamePath.Replace(".bxm.xml", ".xml"), ".bxm");
+            string bxmGamePath = Path.ChangeExtension(gamePath.Replace(".bxm.xml", ".xml"), ".bxm").Replace('\\', '/');
             string outputBxmPath = GetTempFilePathForMod(gamePath, modId);
+
+            var lastModified = File.GetLastWriteTime(sourceFile);
+            if (File.Exists(outputBxmPath) && _cacheRegistry.TryGetFileIfUpToDate(modId, gamePath, lastModified, out CachedModFileInfo cachedFileInfo))
+            {
+                cachedFileInfo.IsUsed = true;
+
+                if (_configuration.VerboseLogging)
+                    LogInfo($"-> {bxmGamePath} ({modId}) - already up to date.");
+
+                return new ModFile(modId, sourceFile, bxmGamePath, outputBxmPath);
+            }
+
+            LogInfo($"-> Converting .xml '{sourceFile}' ({modId}) to Binary XML .bxm..");
+
+            XmlDocument doc = new XmlDocument();
+            doc.Load(sourceFile);
+
             using var stream = File.OpenWrite(outputBxmPath);
             XmlBin.Write(stream, doc);
 
-            return new ModFile(file, bxmGamePath, outputBxmPath);
+            var cachedEntry = _cacheRegistry.AddEntry(modId, gamePath, lastModified);
+            cachedEntry.IsUsed = true;
+            return new ModFile(modId, sourceFile, bxmGamePath, outputBxmPath);
         }
         catch (Exception e)
         {
             LogError($"Failed to process .xml file into Binary XML .msg: {e.Message} (can be ignored if this is not meant to be a MessagePack file)");
-            return new ModFile(file, gamePath, file);
+
+            var cachedEntry = _cacheRegistry.AddEntry(modId, gamePath, File.GetLastWriteTime(sourceFile));
+            cachedEntry.IsUsed = true;
+            return new ModFile(modId, sourceFile, gamePath, sourceFile);
         }
     }
 

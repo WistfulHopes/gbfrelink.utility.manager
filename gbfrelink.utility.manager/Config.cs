@@ -53,8 +53,22 @@ public class Config : Configurable<Config>
     [DisplayName("Print Redirected Files")]
     [Description("Whether to print redirected files in the console.\n\n" +
 "Useful for modders to see if modded files have been loaded.")]
+    [DefaultValue(false)]
+    public bool PrintRedirectedFiles { get; set; } = false;
+
+    [Category("Console")]
+    [DisplayName("Verbose Logging")]
+    [Description("Enables verbose logging. If disabled, files that are being updated aswell as index operations will not be displayed.\n" +
+        "May improve load time when loading mods with thousands of files.\n" +
+        "You should leave this on unless you know what you're doing.")]
     [DefaultValue(true)]
-    public bool PrintRedirectedFiles { get; set; } = true;
+    public bool VerboseLogging { get; set; } = true;
+
+    [Category("Misc")]
+    [DisplayName("Show Mod Loader Info on Title Screen")]
+    [Description("Whether to display mod information on the title screen.")]
+    [DefaultValue(true)]
+    public bool ShowModLoaderInfo { get; set; } = true;
 }
 
 /// <summary>
