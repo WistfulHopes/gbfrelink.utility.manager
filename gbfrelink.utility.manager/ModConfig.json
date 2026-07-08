@@ -2,7 +2,7 @@
   "ModId": "gbfrelink.utility.manager",
   "ModName": "Granblue Fantasy Relink Mod Manager",
   "ModAuthor": "Nenkai/WistfulHopes",
-  "ModVersion": "2.0.0",
+  "ModVersion": "2.0.1",
   "ModDescription": "Mod management utility for Granblue Fantasy: Relink & Granblue Fantasy: Relink - Endless Ragnarok.",
   "ModDll": "gbfrelink.utility.manager.dll",
   "ModIcon": "Preview.png",
