@@ -34,6 +34,14 @@ public class Config : Configurable<Config>
     public bool AutoUpgradeMInfo { get; set; } = true;
 
     [Category("Output Options")]
+    [DisplayName("Auto-Upgrade .mmat constant buffers")]
+    [Description("Advanced users only. Whether to automatically copy constant buffers data from original material files to modded files\n" +
+        "for model mods created before Endless Ragnarok. If this option is enabled, old models may work, but others may not.\n\n" +
+        "This option should always be enabled.")]
+    [DefaultValue(false)]
+    public bool AutoUpgradeMMatConstantBuffers { get; set; } = false;
+
+    [Category("Output Options")]
     [DisplayName("Auto-Convert .json to .msg")]
     [Description("Advanced users only. Whether to automatically convert any .json files to .msg (MessagePack) files.\n" +
         "Please only provide .json files if this option is enabled.\n\n" +
@@ -48,6 +56,7 @@ public class Config : Configurable<Config>
     "This option should always be enabled.")]
     [DefaultValue(true)]
     public bool AutoConvertXmlToBxm { get; set; } = true;
+
 
     [Category("Console")]
     [DisplayName("Print Redirected Files")]

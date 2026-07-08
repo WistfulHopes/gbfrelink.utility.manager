@@ -2,8 +2,8 @@
   "ModId": "gbfrelink.utility.manager",
   "ModName": "Granblue Fantasy Relink Mod Manager",
   "ModAuthor": "Nenkai/WistfulHopes",
-  "ModVersion": "1.3.0",
-  "ModDescription": "Mod management utility for Granblue Fantasy Relink",
+  "ModVersion": "2.0.0",
+  "ModDescription": "Mod management utility for Granblue Fantasy: Relink & Granblue Fantasy: Relink - Endless Ragnarok.",
   "ModDll": "gbfrelink.utility.manager.dll",
   "ModIcon": "Preview.png",
   "ModR2RManagedDll32": "x86/gbfrelink.utility.manager.dll",
@@ -31,7 +31,9 @@
   ],
   "OptionalDependencies": [],
   "SupportedAppId": [
-    "granblue_fantasy_relink.exe"
+    "granblue_fantasy_relink.exe",
+    "granblue_fantasy_relink_endless_ragnarok_beta_test.exe",
+    "granblue_fantasy_relink_endless_ragnarok_demo.exe"
   ],
   "ProjectUrl": "https://nenkai.github.io/relink-modding/"
 }

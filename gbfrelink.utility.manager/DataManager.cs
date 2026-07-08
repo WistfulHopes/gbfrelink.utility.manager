@@ -1,18 +1,4 @@
-﻿using FlatSharp;
-
-using GBFRDataTools.Entities;
-using GBFRDataTools.Files.BinaryXML;
-
-using gbfrelink.utility.manager.Configuration;
-using gbfrelink.utility.manager.Interfaces;
-
-using MessagePack;
-
-using Reloaded.Mod.Interfaces;
-using Reloaded.Mod.Interfaces.Internal;
-using Reloaded.Universal.Redirector.Interfaces;
-
-using System;
+﻿using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -23,16 +9,33 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
+using System.Text.Json;
+
+using Reloaded.Mod.Interfaces;
+using Reloaded.Mod.Interfaces.Internal;
+using Reloaded.Mod.Interfaces.Structs;
+using Reloaded.Universal.Redirector.Interfaces;
+
+using FlatSharp;
+
+using MessagePack;
+
+using GBFRDataTools.Files.BinaryXML;
+using GBFRDataTools.FlatBuffers;
+
+using gbfrelink.utility.manager.Configuration;
+using gbfrelink.utility.manager.Entities.Config;
+using gbfrelink.utility.manager.Interfaces;
 
 namespace gbfrelink.utility.manager;
 
 public class DataManager : IDataManager
 {
-    private IModConfig _modConfig;
-    private IModLoader _modLoader;
-    private ILogger _logger;
-    private IRedirectorController _redirectorController;
-    private Config _configuration;
+    private readonly IModConfig _modConfig;
+    private readonly IModLoader _modLoader;
+    private readonly ILogger _logger;
+    private readonly IRedirectorController _redirectorController;
+    private readonly Config _configuration;
 
     private IndexFile _indexFile;
     private IndexFile _moddedIndex;
@@ -41,8 +44,13 @@ public class DataManager : IDataManager
     private string _tempPath;
     private string _gameDir;
 
+    private readonly List<ModFile> _modFiles = [];
+    private readonly Dictionary<string /* GamePath*/, ModFile /* Mod File */> _filePathsToModFiles = [];
+
+    private readonly Dictionary<string, MaterialConfig> _materialConfigs = [];
+
     public ArchiveAccessor _archiveAccessor;
-    private ModFileCacheRegistry _cacheRegistry;
+    private readonly ModFileCacheRegistry _cacheRegistry;
 
     private bool _initialized;
     public bool Initialized => _initialized;
@@ -95,9 +103,6 @@ public class DataManager : IDataManager
     }
 
     private record ModFile(string ModId, string SourcePath, string GamePath, string TargetPath);
-    private List<ModFile> _modFiles = [];
-
-    private Dictionary<string, ModFile> _filesToModOwner = [];
 
     /// <summary>
     /// Registers & updates the index with all the potential GBFR files for a mod.
@@ -113,11 +118,34 @@ public class DataManager : IDataManager
 
         _logger.WriteLine($"[{_modConfig.ModId}] Registering files for {modId}...");
 
+        string configFolder = Path.Combine(folder, "config");
+        if (Directory.Exists(configFolder))
+        {
+            string materialConfigPath = Path.Combine(configFolder, "material_config.json");
+
+            try
+            {
+                MaterialConfig materialConfig = JsonSerializer.Deserialize<MaterialConfig>(File.ReadAllText(materialConfigPath));
+                _materialConfigs.Add(modId, materialConfig);
+            }
+            catch (Exception ex)
+            {
+                LogError($"Failed to load material config for '{modId}': {ex.Message}");
+            }
+        }
+
+        string dataFolder = Path.Combine(folder, "data");
+        if (!Directory.Exists(dataFolder))
+        {
+            LogWarn($"{modId} does not have a 'GBFR/data' folder, so skipping it.");
+            return;
+        }
+
         int numFilesForMod = 0;
-        var allFiles = Directory.GetFiles(folder, "*.*", SearchOption.AllDirectories);
+        var allFiles = Directory.GetFiles(dataFolder, "*.*", SearchOption.AllDirectories);
         foreach (string newPath in allFiles)
         {
-            ModFile modFile = ProcessFile(newPath, Path.GetRelativePath(folder, newPath).Replace('\\', '/'), modId);
+            ModFile modFile = ProcessFile(newPath, Path.GetRelativePath(dataFolder, newPath).Replace('\\', '/'), modId);
             if (modFile is not null)
             {
                 _modFiles.Add(modFile);
@@ -127,13 +155,13 @@ public class DataManager : IDataManager
 
         foreach (ModFile modFile in _modFiles)
         {
-            if (_filesToModOwner.TryGetValue(modFile.GamePath, out ModFile modIdOwner))
+            if (_filePathsToModFiles.TryGetValue(modFile.GamePath, out ModFile modIdOwner))
             {
                 LogWarn($"Note: Potential conflict - {modId} edits '{modFile.GamePath}' which is already edited by {modIdOwner.ModId}");
-                _filesToModOwner[modFile.GamePath] = modFile;
+                _filePathsToModFiles[modFile.GamePath] = modFile;
             }
             else
-                _filesToModOwner.Add(modFile.GamePath, modFile);
+                _filePathsToModFiles.Add(modFile.GamePath, modFile);
 
             long fileSize = new FileInfo(modFile.TargetPath).Length;
             if (RegisterExternalFileToIndex(modFile.GamePath, (ulong)fileSize))
@@ -280,7 +308,7 @@ public class DataManager : IDataManager
 
         fileName = fileName.Replace('\\', '/').ToLower();
 
-        if (_filesToModOwner.TryGetValue(fileName, out ModFile modFile))
+        if (_filePathsToModFiles.TryGetValue(fileName, out ModFile modFile))
         {
             byte[] fileData = File.ReadAllBytes(modFile.TargetPath);
             return fileData;
@@ -345,6 +373,10 @@ public class DataManager : IDataManager
         {
             case ".minfo" when _configuration.AutoUpgradeMInfo:
                 modFile = UpgradeMInfoIfNeeded(sourceFile, gamePath, modId);
+                break;
+
+            case ".mmat":
+                modFile = UpgradeMMatIfNeeded(sourceFile, gamePath, modId);
                 break;
 
             case ".json" when _configuration.AutoConvertJsonToMsg:
@@ -426,6 +458,50 @@ public class DataManager : IDataManager
 
                 return new ModFile(modId, sourceFile, gamePath, outputPath);
             }
+        }
+        catch (Exception e)
+        {
+            LogError($"Failed to process .minfo file, file will be copied instead - {e.Message}");
+        }
+
+
+        return new ModFile(modId, sourceFile, gamePath, sourceFile);
+    }
+
+    private ModFile UpgradeMMatIfNeeded(string sourceFile, string gamePath, string modId)
+    {
+        // GBFR ER upgraded shaders such that constant buffers require more data
+
+        if (!_configuration.AutoUpgradeMMatConstantBuffers)
+        {
+            // Check if the mod provided guidance to use original constant buffers
+            if (!_materialConfigs.TryGetValue(modId, out MaterialConfig materialConfig) || !materialConfig.ForceMatchConstantBufferFileList.Contains(gamePath))
+                return new ModFile(modId, sourceFile, gamePath, sourceFile);
+        }
+
+        try
+        {
+            byte[] originalMmatBytes = GetArchiveFile(gamePath);
+            byte[] moddedMmatBytes = File.ReadAllBytes(sourceFile);
+
+            ModelMaterialSet originalMmat = ModelMaterialSet.Serializer.Parse(originalMmatBytes);
+            ModelMaterialSet moddedMmat = ModelMaterialSet.Serializer.Parse(moddedMmatBytes);
+
+            moddedMmat.ConstantBuffers = originalMmat.ConstantBuffers;
+
+            int size = ModelMaterialSet.Serializer.GetMaxSize(moddedMmat);
+            byte[] buf = new byte[size];
+            ModelMaterialSet.Serializer.Write(buf, moddedMmat);
+            string outputPath = GetTempFilePathForMod(gamePath, modId);
+            File.WriteAllBytes(outputPath, buf);
+
+            LogInfo($"-> .mmat '{sourceFile}' constant buffers has been updated to match the original model for compatibility");
+
+            var cachedEntry = _cacheRegistry.AddEntry(modId, gamePath, File.GetLastWriteTime(sourceFile));
+            cachedEntry.IsUsed = true;
+
+            return new ModFile(modId, sourceFile, gamePath, outputPath);
+            
         }
         catch (Exception e)
         {

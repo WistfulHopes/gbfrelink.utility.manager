@@ -6,7 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-using GBFRDataTools.Entities;
+using GBFRDataTools.FlatBuffers;
 
 using FlatSharp;
 using K4os.Compression.LZ4;
@@ -39,9 +39,21 @@ public class ArchiveAccessor : IDisposable
         _archiveStreams = new Stream[_indexFile.NumArchives];
     }
 
+    public bool FileExists(string path)
+    {
+        ulong hash = Utils.XXHash64Path(path);
+        int index = _indexFile.ArchiveFileHashes.BinarySearch(hash);
+        return index >= 0;
+    }
+
     public byte[] GetFileData(string fileName)
     {
         ulong hash = Utils.XXHash64Path(fileName);
+        return GetFileData(hash);
+    }
+
+    public byte[] GetFileData(ulong hash)
+    {
         int index = _indexFile.ArchiveFileHashes.BinarySearch(hash);
         if (index < 0)
             throw new FileNotFoundException("File was not found in archive.");

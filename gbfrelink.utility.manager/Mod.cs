@@ -1,28 +1,23 @@
-﻿using FlatSharp;
+﻿using System.Buffers.Binary;
+using System.Diagnostics;
+using System.IO.Hashing;
+using System.Net;
+using System.Runtime.InteropServices;
+using System.Text;
 
-using GBFRDataTools;
-using GBFRDataTools.Entities;
+using Reloaded.Hooks.Definitions;
+using Reloaded.Memory.SigScan.ReloadedII.Interfaces;
+using Reloaded.Mod.Interfaces;
+using Reloaded.Mod.Interfaces.Internal;
+using Reloaded.Universal.Redirector.Interfaces;
 
 using gbfrelink.utility.manager.Configuration;
 using gbfrelink.utility.manager.Entities;
 using gbfrelink.utility.manager.Interfaces;
 using gbfrelink.utility.manager.Template;
 
-using MessagePack;
-
-using Reloaded.Hooks.Definitions;
-using Reloaded.Memory.Interfaces;
-using Reloaded.Memory.SigScan.ReloadedII.Interfaces;
-using Reloaded.Mod.Interfaces;
-using Reloaded.Mod.Interfaces.Internal;
-using Reloaded.Universal.Redirector.Interfaces;
-
-using System.Buffers.Binary;
-using System.Diagnostics;
-using System.IO.Hashing;
-using System.Net;
-using System.Runtime.InteropServices;
-using System.Text;
+using NenTools.Reloaded.ScanManager;
+using NenTools.Reloaded.ScanManager.Interfaces;
 
 namespace gbfrelink.utility.manager;
 
@@ -61,7 +56,8 @@ public class Mod : ModBase, IExports // <= Do not Remove.
     /// </summary>
     private readonly IModConfig _modConfig;
 
-    public DataManager _dataManager;
+    private static DataManager _dataManager;
+    private static ScanManager _scanManager;
 
     private readonly IRedirectorController _redirectorController;
     private static IStartupScanner? _startupScanner = null!;
@@ -100,13 +96,29 @@ public class Mod : ModBase, IExports // <= Do not Remove.
             return;
         }
 
+        try
+        {
+            UserDefinedParams.InitializeInstance();
+        }
+        catch (Exception ex)
+        {
+            _logger.WriteLine($"[{_modConfig.ModId}] Failed to initialize. Could not load user defined params resource from executable.", _logger.ColorRed);
+            return;
+        }
+
+        _scanManager = new ScanManager(_startupScanner, _logger);
+        _scanManager.InitializeScans(Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "Signatures"), _modConfig.ModId);
+
         HookFileSizeQuery();
 
         _dataManager = new DataManager(_modConfig, _modLoader, _logger, _redirectorController, _configuration);
         if (!_dataManager.Initialize())
             _logger.WriteLine($"[{_modConfig.ModId}] Failed to initialize. Mods will still be attempted to be loaded.", _logger.ColorRed);
 
+
+        _modLoader.AddOrReplaceController<IUserDefinedParams>(_owner, UserDefinedParams.Instance);
         _modLoader.AddOrReplaceController<IDataManager>(_owner, _dataManager);
+        _modLoader.AddOrReplaceController<IScanManager>(_owner, _scanManager);
 
         _sw = Stopwatch.StartNew();
 
@@ -128,19 +140,12 @@ public class Mod : ModBase, IExports // <= Do not Remove.
         // It would be especially annoying when the index was larger and it struggled to find files in the index. Why?
         // Because part of the index buffer was zeroed. So binary search for a hash would eventually just search zeroes as it reached the bottom of the file.
 
-        SigScan("55 41 57 41 56 41 54 56 57 53 48 81 EC ?? ?? ?? ?? 48 8D AC 24 ?? ?? ?? ?? 48 83 E4 ?? 48 89 E3 48 89 AB ?? ?? ?? ?? 48 C7 45 ?? ?? ?? ?? ?? C5 F8 57 C0",
-            "FileRaw::QuerySize", address =>
-        {
-            _queryFileSizeHook = _hooks!.CreateHook<QuerySizeDelegate>(QueryFileSizeImpl, address).Activate();
-            _logger.WriteLine($"[{_modConfig.ModId}] Successfully hooked FileRaw::QuerySize (0x{address:X8})", _logger.ColorGreen);
-        });
+        string source = UserDefinedParams.Instance.IsEndlessRagnarok() ? "granblue_fantasy_relink_er" : "granblue_fantasy_relink";
+        _scanManager.AddScan("FileRaw_QuerySize", source, (addr) =>
+            _queryFileSizeHook = _hooks!.CreateHook<QuerySizeDelegate>(QueryFileSizeImpl, addr).Activate());
     }
 
-    struct StringSpan
-    {
-        public nint StringPtr;
-        public ulong Size;
-    }
+   
 
     private unsafe uint QueryFileSizeImpl(StringSpan* fileNamePtr)
     {
@@ -169,35 +174,54 @@ public class Mod : ModBase, IExports // <= Do not Remove.
 
     private void ModLoading(IModV1 mod, IModConfigV1 modConfig)
     {
-        var modDir = Path.Combine(_modLoader.GetDirectoryForModId(modConfig.ModId), @"GBFR\data");
+        var modDir = Path.Combine(_modLoader.GetDirectoryForModId(modConfig.ModId), @"GBFR");
         if (!Directory.Exists(modDir))
             return;
 
         _dataManager.RegisterModFiles(modConfig.ModId, modDir);
     }
 
+
     private void AllModsLoaded()
     {
         if (_configuration.ShowModLoaderInfo)
         {
-            var modDir = Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), @"GBFR\data");
+            string fileName = UserDefinedParams.Instance.IsEndlessRagnarok() ? "text_ui.msg" : "text_temp.msg";
+
+            var modDir = Path.Combine(_modLoader.GetDirectoryForModId(_modConfig.ModId), "GBFR");
+            string dataFolder = Path.Combine(modDir, "data");
+            string textDir = Path.Combine(dataFolder, "system/table/text");
+
+            if (Directory.Exists(Path.GetDirectoryName(textDir)))
+                Directory.Delete(Path.GetDirectoryName(textDir), recursive: true);
+
             foreach (var region in new string[] { "bp", "cs", "ct", "en", "es", "fr", "ge", "it", "jp", "ko" })
             {
-                byte[] msgFile = _dataManager.GetModdedOrAchiveFile($"system/table/text/{region}/text_temp.msg");
-                var textData = TextDataFile.Read(msgFile, true);
-                var versionColumn = textData.Rows.FirstOrDefault(e => e.Id_hash == "TXT_TITLE_VERSION");
-                versionColumn.Text += $"\n";
-                versionColumn.Text += $"Reloaded-II {_modLoader.GetLoaderVersion()} by Sewer76\n";
-                versionColumn.Text += $"Granblue Fantasy Relink - Mod Loader {_modConfig.ModVersion} by Nenkai\n";
-                versionColumn.Text += $"Modding Website: nenkai.github.io/relink-modding/\n";
-                versionColumn.Text += $"Support: ko-fi.com/nenkai\n";
-                versionColumn.Text += $"Discord: discord.gg/gbfr / discord.gg/KRm6WtQkVR";
+                string textFilePath = $"system/table/text/{region}/{fileName}";
+                try
+                {
+                    byte[] msgFile = _dataManager.GetModdedOrAchiveFile(textFilePath);
+                    var textData = TextDataFile.Read(msgFile, true);
 
-                byte[] msgBytes = textData.Write();
+                    var versionColumn = textData.Rows.FirstOrDefault(e => e.Id_hash == "TXT_TITLE_VERSION");
+                    versionColumn.Text += $" (App Version {UserDefinedParams.Instance.ApplicationVersion:3})";
+                    versionColumn.Text += $"\n";
+                    versionColumn.Text += $"Reloaded-II {_modLoader.GetLoaderVersion()} by Sewer76\n";
+                    versionColumn.Text += $"Granblue Fantasy Relink - Mod Loader {_modConfig.ModVersion} by Nenkai\n";
+                    versionColumn.Text += $"Modding Website: nenkai.github.io/relink-modding/\n";
+                    versionColumn.Text += $"Support: ko-fi.com/nenkai\n";
+                    versionColumn.Text += $"Discord: discord.gg/gbfr / discord.gg/KRm6WtQkVR";
 
-                string outputDir = Path.Combine(modDir, $"system/table/text/{region}/text_temp.msg");
-                Directory.CreateDirectory(Path.GetDirectoryName(outputDir));
-                File.WriteAllBytes(outputDir, msgBytes);
+                    byte[] msgBytes = textData.Write();
+
+                    string outputDir = Path.Combine(dataFolder, textFilePath);
+                    Directory.CreateDirectory(Path.GetDirectoryName(outputDir));
+                    File.WriteAllBytes(outputDir, msgBytes);
+                }
+                catch (Exception ex)
+                {
+                    _logger.WriteLine($"[{_modConfig.ModId}] Failed to apply title screen mod info for {textFilePath}: {ex.Message}", _logger.ColorRed);
+                }
             }
 
             _dataManager.RegisterModFiles(_modConfig.ModId, modDir);
@@ -207,8 +231,12 @@ public class Mod : ModBase, IExports // <= Do not Remove.
         _logger.WriteLine($"[{_modConfig.ModId}] Index updated, all mods loaded. Time taken: {_sw.Elapsed}", _logger.ColorGreen);
     }
 
-
-    public Type[] GetTypes() => [typeof(IDataManager)];
+    public Type[] GetTypes() => 
+    [
+        typeof(IDataManager),
+        typeof(IUserDefinedParams),
+        typeof(IScanManager),
+    ];
 
     #region Standard Overrides
 
@@ -220,6 +248,11 @@ public class Mod : ModBase, IExports // <= Do not Remove.
         _logger.WriteLine($"[{_modConfig.ModId}] Config Updated: Applying");
     }
 
+    struct StringSpan
+    {
+        public nint StringPtr;
+        public ulong Size;
+    }
 
     #endregion
 
