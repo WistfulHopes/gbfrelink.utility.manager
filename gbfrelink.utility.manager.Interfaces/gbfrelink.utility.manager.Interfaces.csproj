@@ -8,6 +8,7 @@
     <Title>Data managing interface for gbfrelink.utility.manager</Title>
 	<VersionPrefix>1.2.0</VersionPrefix>
     <FileVersion>1.2.0</FileVersion>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
   </PropertyGroup>
 
 </Project>
