@@ -1,5 +1,8 @@
 ﻿namespace gbfrelink.utility.manager.Interfaces;
 
+/// <summary>
+/// Data manager interface for Granblue Fantasy: Relink, allowing modding and fetching game files.
+/// </summary>
 public interface IDataManager
 {
     /// <summary>
