@@ -11,16 +11,69 @@
   "ModNativeDll32": "",
   "ModNativeDll64": "",
   "Tags": [],
-  "CanUnload": null,
-  "HasExports": null,
+  "CanUnload": false,
+  "HasExports": true,
   "IsLibrary": false,
   "ReleaseMetadataFileName": "gbfrelink.utility.manager.ReleaseMetadata.json",
+  "IgnoreRegexes": [
+    ".*\\.json",
+    "\\GBFR",
+    "\\temp",
+    "cached_files\\.txt"
+  ],
+  "IncludeRegexes": [
+    "\\.deps\\.json",
+    "\\.runtimeconfig\\.json",
+    "ModConfig\\.json"
+  ],
   "PluginData": {
     "GitHubRelease": {
       "UserName": "WistfulHopes",
       "RepositoryName": "gbfrelink.utility.manager",
       "UseReleaseTag": true,
       "AssetFileName": "Mod.zip"
+    },
+    "GameBananaDependencies": {
+      "IdToConfigMap": {
+        "reloaded.universal.redirector": {
+          "Config": {
+            "ItemType": "Mod",
+            "ItemId": 51225
+          },
+          "ReleaseMetadataName": "Reloaded.Universal.Redirector.ReleaseMetadata.json"
+        }
+      }
+    },
+    "GitHubDependencies": {
+      "IdToConfigMap": {
+        "Reloaded.Memory.SigScan.ReloadedII": {
+          "Config": {
+            "UserName": "Reloaded-Project",
+            "RepositoryName": "Reloaded.Memory.SigScan",
+            "UseReleaseTag": false,
+            "AssetFileName": "Mod.zip"
+          },
+          "ReleaseMetadataName": "Reloaded.Memory.SigScan.ReloadedII.ReleaseMetadata.json"
+        },
+        "reloaded.sharedlib.hooks": {
+          "Config": {
+            "UserName": "Sewer56",
+            "RepositoryName": "Reloaded.SharedLib.Hooks.ReloadedII",
+            "UseReleaseTag": true,
+            "AssetFileName": "reloaded.sharedlib.hooks.zip"
+          },
+          "ReleaseMetadataName": "Sewer56.Update.ReleaseMetadata.json"
+        },
+        "reloaded.universal.redirector": {
+          "Config": {
+            "UserName": "Reloaded-Project",
+            "RepositoryName": "Reloaded.Universal.Redirector",
+            "UseReleaseTag": false,
+            "AssetFileName": ""
+          },
+          "ReleaseMetadataName": "Reloaded.Universal.Redirector.ReleaseMetadata.json"
+        }
+      }
     }
   },
   "IsUniversalMod": false,
@@ -31,9 +84,9 @@
   ],
   "OptionalDependencies": [],
   "SupportedAppId": [
-    "granblue_fantasy_relink.exe",
     "granblue_fantasy_relink_endless_ragnarok_beta_test.exe",
-    "granblue_fantasy_relink_endless_ragnarok_demo.exe"
+    "granblue_fantasy_relink_endless_ragnarok_demo.exe",
+    "granblue_fantasy_relink.exe"
   ],
   "ProjectUrl": "https://github.com/WistfulHopes/gbfrelink.utility.manager"
 }
