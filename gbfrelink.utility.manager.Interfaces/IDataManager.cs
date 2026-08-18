@@ -38,6 +38,13 @@ public interface IDataManager
     byte[] GetArchiveFile(string fileName);
 
     /// <summary>
+    /// Gets an archive file, either from the base game or by a loaded mod.
+    /// </summary>
+    /// <param name="fileName"></param>
+    /// <returns></returns>
+    byte[] GetModdedOrAchiveFile(string fileName);
+
+    /// <summary>
     /// Adds or updates a game file as an external file, using the provided data.
     /// </summary>
     /// <param name="gamePath"></param>
