@@ -31,18 +31,11 @@ public interface IDataManager
     bool FileExists(string filePath, bool includeExternal = true, bool checkExternalFileExistsOnDisk = true);
 
     /// <summary>
-    /// Gets a game archive file. This does not fetch from external files.
+    /// Gets a game archive file, unaltered by mods. This does not fetch from external files.
     /// </summary>
     /// <param name="fileName"></param>
     /// <returns></returns>
     byte[] GetArchiveFile(string fileName);
-
-    /// <summary>
-    /// Gets an archive file, either from the base game or by a loaded mod.
-    /// </summary>
-    /// <param name="fileName"></param>
-    /// <returns></returns>
-    byte[] GetModdedOrAchiveFile(string fileName);
 
     /// <summary>
     /// Adds or updates a game file as an external file, using the provided data.
@@ -57,4 +50,11 @@ public interface IDataManager
     /// <param name="gamePath">Game path.</param>
     /// <param name="filePath">Local file to use.</param>
     void AddOrUpdateExternalFile(string gamePath, string filePath);
+
+    /// <summary>
+    /// Gets an archive file, either modded by a loaded mod, or from the game if unaltered.
+    /// </summary>
+    /// <param name="fileName"></param>
+    /// <returns></returns>
+    byte[] GetModdedOrAchiveFile(string fileName);
 }
